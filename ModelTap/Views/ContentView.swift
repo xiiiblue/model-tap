@@ -42,7 +42,8 @@ struct ContentView: View {
                 }
                 ModelListView(viewModel: viewModel)
                 Divider()
-                TestDetailView(summary: viewModel.selectedSummary).frame(maxHeight: 190)
+                TestDetailView(summary: viewModel.selectedSummary)
+                    .frame(height: 190, alignment: .topLeading)
             }
         } else {
             ContentUnavailableView("选择一个 API 配置", systemImage: "point.3.connected.trianglepath.dotted", description: Text("从左侧选择配置，或新建一个配置开始。"))
