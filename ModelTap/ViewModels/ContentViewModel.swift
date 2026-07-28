@@ -96,7 +96,6 @@ final class ContentViewModel: ObservableObject {
                 updateModel(id: modelID, summary: summary)
                 selectedSummary = summary
                 try repository.saveTestRecord(summary, modelID: modelID, profile: profile)
-                notice = RequestNotice(message: "\(modelID) 测试成功")
             } catch {
                 let summary = ModelTestSummary(success: false, statusCode: Self.statusCode(error), duration: Date().timeIntervalSince(start), testedAt: .now, protocolName: nil, output: nil, errorSummary: Self.friendlyMessage(error), tokenUsage: nil)
                 updateModel(id: modelID, summary: summary)
