@@ -82,8 +82,10 @@ private struct LeadingAlignedTextField: NSViewRepresentable {
         let textField: NSTextField = isSecure ? NSSecureTextField() : NSTextField()
         textField.alignment = .left
         textField.isBezeled = false
+        textField.isBordered = false
         textField.drawsBackground = false
-        textField.focusRingType = .default
+        textField.backgroundColor = .clear
+        textField.focusRingType = .none
         textField.delegate = context.coordinator
         textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
