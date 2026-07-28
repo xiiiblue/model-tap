@@ -92,6 +92,7 @@ final class ContentViewModel: ObservableObject {
         requestTask = Task { [weak self] in
             guard let self else { return }
             defer { testingModelIDs.remove(modelID) }
+            await Task.yield()
             let start = Date()
             do {
                 let key = try repository.apiKey(for: profile)
@@ -123,6 +124,7 @@ final class ContentViewModel: ObservableObject {
             let profileID = profile.id
             let runner = BatchTestRunner { [weak self, tester] id in
                 self?.testingModelIDs = [id]
+                await Task.yield()
                 return try await tester.test(modelID: id, baseURL: baseURL, apiKey: key, format: format)
             }
             let result = await runner.run(models: batchModels, onResult: { [weak self] id, result in

@@ -31,8 +31,7 @@ struct ModelRowView: View {
 
     @ViewBuilder private var statusIcon: some View {
         if isTesting {
-            ProgressView()
-                .controlSize(.small)
+            LoadingStatusIcon()
                 .help("测试中")
         } else if let summary = model.latestTest {
             Image(systemName: summary.success ? "checkmark.circle.fill" : "xmark.circle.fill")
@@ -40,6 +39,31 @@ struct ModelRowView: View {
                 .help(summary.success ? "测试成功" : (summary.errorSummary ?? "测试失败"))
         } else {
             Image(systemName: "questionmark.circle").foregroundStyle(.secondary).help("未测试")
+        }
+    }
+}
+
+private struct LoadingStatusIcon: View {
+    @State private var rotation = 0.0
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.secondary.opacity(0.22), lineWidth: 2)
+            Circle()
+                .trim(from: 0.12, to: 0.78)
+                .stroke(
+                    Color.accentColor,
+                    style: StrokeStyle(lineWidth: 2, lineCap: .round)
+                )
+                .rotationEffect(.degrees(rotation))
+        }
+        .frame(width: 15, height: 15)
+        .accessibilityLabel("测试中")
+        .onAppear {
+            withAnimation(.linear(duration: 0.75).repeatForever(autoreverses: false)) {
+                rotation = 360
+            }
         }
     }
 }
