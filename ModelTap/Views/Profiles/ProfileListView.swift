@@ -48,7 +48,7 @@ struct ProfileListView: View {
 private struct ProfileRow: View {
     let profile: APIProfile
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack {
                 Text(profile.name).font(.headline)
                 Spacer()
@@ -56,9 +56,11 @@ private struct ProfileRow: View {
                     .font(.caption)
                     .foregroundStyle(profile.testStatus == .success ? .green : profile.testStatus == .failure ? .red : .secondary)
             }
-            Text(profile.baseURL).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            Text(profile.lastUsedAt.map { "最后使用：\($0.modelTapShort)" } ?? "尚未使用").font(.caption2).foregroundStyle(.tertiary)
+            Text(profile.baseURL)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, 4)
     }
 }
