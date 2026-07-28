@@ -10,7 +10,7 @@ ModelTap是使用SwiftUI和SwiftData编写的macOS原生工具，用于发现、
 - `ModelTap/Models/`：SwiftData模型和应用状态模型。
 - `ModelTap/Networking/`：API请求、模型发现和测试执行逻辑。
 - `ModelTap/Persistence/`：本地数据持久化。
-- `ModelTap/Security/`：Keychain相关逻辑。
+- `ModelTap/Security/`：API Key本地加密逻辑。
 - `ModelTap/Views/`和`ModelTap/ViewModels/`：SwiftUI界面及其视图模型。
 - `ModelTapTests/`：XCTest测试。
 
@@ -45,8 +45,9 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Release -
 
 ## 安全要求
 
-- API Key只能保存于macOS Keychain，不得写入SwiftData、源代码、日志或提交记录；配置编辑器默认隐藏，用户可通过眼睛按钮切换明文显示。
-- 本地临时签名构建的指定要求只包含本次二进制`cdhash`，重新构建后首次访问已有钥匙串条目可能再次弹出授权。`ProfileRepository.apiKey`遇到`errSecAuthFailed`时自动重试一次，使用户授权后继续原操作；不得对用户取消等其他状态重试。正式发布使用稳定Developer ID签名。
+- API Key使用`LocalAPIKeyCipher`执行AES-GCM加密，密文保存于SwiftData；256位本地加密密钥保存于`~/Library/Application Support/ModelTap/local-encryption.key`，目录权限为`0700`、文件权限为`0600`。不得把API Key明文写入SwiftData、源代码、日志或提交记录。
+- 应用不得访问macOS Keychain。`APIProfile.keychainReference`仅为旧版SwiftData结构兼容而保留，新代码不得读取或写入Keychain；旧版升级后由用户重新填写API Key，旧Keychain条目不主动迁移或删除。
+- 本地密文和加密密钥位于同一用户账户下，只用于避免数据库明文，不提供Keychain级别的安全隔离；配置编辑器默认隐藏API Key，用户可通过眼睛按钮切换明文显示。
 - API格式随配置持久化：`openai`对应Chat Completions、`openai-response`对应Responses、`anthropic`对应Messages。已有配置迁移时默认`openai`。
 - OpenAI格式使用`Authorization: Bearer`；Anthropic格式使用`x-api-key`和`anthropic-version: 2023-06-01`，不得向Anthropic请求发送Bearer密钥。协议由用户选择，不做自动回退。
 - 不要提交`.env`、密钥文件、用户数据、构建产物或Xcode用户状态。

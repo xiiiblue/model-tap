@@ -1,5 +1,4 @@
 import Foundation
-import Security
 import SwiftData
 import XCTest
 @testable import ModelTap
@@ -10,34 +9,44 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertFalse(Redaction.sensitive("Bearer sk-1234567890abcd", apiKey: "sk-1234567890abcd").contains("sk-1234567890abcd"))
     }
 
-    func testMockKeychainLifecycle() throws {
-        let keychain = InMemoryKeychainStore()
-        try keychain.save("sk-fake", for: "profile-1")
-        XCTAssertEqual(try keychain.read(reference: "profile-1"), "sk-fake")
-        try keychain.delete(reference: "profile-1")
-        XCTAssertNil(try keychain.read(reference: "profile-1"))
+    func testLocalAPIKeyCipherRoundTrip() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cipher = LocalAPIKeyCipher(
+            keyURL: directory.appendingPathComponent("local-encryption.key")
+        )
+
+        let encrypted = try cipher.encrypt("sk-fake")
+
+        XCTAssertNotEqual(encrypted, Data("sk-fake".utf8))
+        XCTAssertEqual(try cipher.decrypt(encrypted), "sk-fake")
     }
 
-    @MainActor func testRepositoryRetriesKeychainReadAfterAuthentication() throws {
+    @MainActor func testRepositoryStoresEncryptedAPIKey() throws {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
             for: APIProfile.self,
             ModelTestRecord.self,
             configurations: configuration
         )
-        let keychain = AuthenticationRetryKeychain()
+        let cipher = TestAPIKeyCipher()
         let repository = ProfileRepository(
             modelContext: container.mainContext,
-            keychain: keychain
+            apiKeyCipher: cipher
         )
-        let profile = APIProfile(
+        let profile = try repository.saveProfile(
+            profile: nil,
             name: "测试配置",
             baseURL: "https://example.test/v1",
-            keychainReference: "profile-auth-retry"
+            apiKey: "sk-fake",
+            apiFormat: .openAI,
+            notes: ""
         )
 
         XCTAssertEqual(try repository.apiKey(for: profile), "sk-fake")
-        XCTAssertEqual(keychain.readCount, 2)
+        XCTAssertEqual(profile.encryptedAPIKey, Data("encrypted:sk-fake".utf8))
+        XCTAssertNil(profile.keychainReference)
     }
 
     @MainActor func testBatchContinuesAfterOneFailure() async {
@@ -61,7 +70,7 @@ final class SecurityAndBatchTests: XCTestCase {
         )
         let viewModel = ContentViewModel(
             modelContext: container.mainContext,
-            keychain: InMemoryKeychainStore(),
+            apiKeyCipher: TestAPIKeyCipher(),
             client: DelayedAPIClient(delayNanoseconds: 250_000_000)
         )
         let profile = try viewModel.repository.saveProfile(
@@ -86,20 +95,15 @@ final class SecurityAndBatchTests: XCTestCase {
     }
 }
 
-private final class AuthenticationRetryKeychain: KeychainStoring, @unchecked Sendable {
-    private(set) var readCount = 0
-
-    func save(_ value: String, for reference: String) throws {}
-
-    func read(reference: String) throws -> String? {
-        readCount += 1
-        if readCount == 1 {
-            throw KeychainError.unexpectedStatus(errSecAuthFailed)
-        }
-        return "sk-fake"
+private struct TestAPIKeyCipher: APIKeyEncrypting {
+    func encrypt(_ value: String) throws -> Data {
+        Data("encrypted:\(value)".utf8)
     }
 
-    func delete(reference: String) throws {}
+    func decrypt(_ data: Data) throws -> String {
+        String(decoding: data, as: UTF8.self)
+            .replacingOccurrences(of: "encrypted:", with: "")
+    }
 }
 
 private struct DelayedAPIClient: APIClienting {

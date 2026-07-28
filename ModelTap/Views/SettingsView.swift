@@ -26,7 +26,7 @@ struct SettingsView: View {
                 Text("安全")
                     .font(.title3.weight(.semibold))
 
-                Label("API Key 使用 macOS Keychain 保存。", systemImage: "lock.shield")
+                Label("API Key使用本地AES-GCM加密保存。", systemImage: "lock.shield")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 16)

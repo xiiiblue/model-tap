@@ -16,10 +16,11 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTapTests -configuration Debu
 ## 数据与安全
 
 - 配置名称、Base URL、备注、时间和测试记录保存在 SwiftData 本地存储。
-- API Key 只保存于 macOS Keychain；SwiftData 仅保存随机 Keychain 引用标识。
+- API Key使用AES-GCM加密后保存于SwiftData，加密密钥单独保存在`~/Library/Application Support/ModelTap/local-encryption.key`并限制为当前用户读写。
+- 应用不再访问macOS Keychain；从旧版升级后需要重新填写一次API Key，旧Keychain条目不会被应用主动读取或删除。
 - 应用不会上传遥测、同步数据或请求无关权限。
 - 日志和错误展示不输出 Authorization 请求头；配置编辑器默认隐藏密钥，用户可手动切换明文显示。
-- 本地重新构建的临时签名App首次读取已有API Key时，macOS可能弹出钥匙串授权；授权成功后应用会自动重试并继续原操作。正式发布应使用稳定的Developer ID签名，避免每次构建因`cdhash`变化而重新授权。
+- 这种本地加密主要避免数据库中出现API Key明文；能读取当前用户应用数据的攻击者仍可能同时取得密文和加密密钥，其安全性低于macOS Keychain。
 - 示例数据使用虚构地址和密钥，不包含真实凭据。
 
 ## 已实现
@@ -31,7 +32,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTapTests -configuration Debu
 - 按所选格式测试模型：OpenAI Chat Completions、OpenAI Responses或Anthropic Messages；不再自动切换协议。
 - 单模型与串行批量测试、取消、进度和结果详情。
 - 最近 100 条测试记录限制。
-- XCTest 覆盖 URL、解析、错误映射、Keychain 模拟和批量执行。
+- XCTest覆盖URL、解析、错误映射、本地加密和批量执行。
 
 ## 已知限制
 

@@ -60,7 +60,7 @@ struct ProfileEditorView: View {
                     }
                 }
                 Section {
-                    Label("API Key 只会保存到 macOS Keychain，不会写入 SwiftData。", systemImage: "lock.shield")
+                    Label("API Key使用本地AES-GCM加密保存，不使用macOS Keychain。", systemImage: "lock.shield")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

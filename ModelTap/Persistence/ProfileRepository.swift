@@ -4,17 +4,20 @@ import SwiftData
 @MainActor
 final class ProfileRepository {
     private let modelContext: ModelContext
-    private let keychain: KeychainStoring
+    private let apiKeyCipher: any APIKeyEncrypting
 
-    init(modelContext: ModelContext, keychain: KeychainStoring = KeychainStore()) {
+    init(
+        modelContext: ModelContext,
+        apiKeyCipher: any APIKeyEncrypting = LocalAPIKeyCipher()
+    ) {
         self.modelContext = modelContext
-        self.keychain = keychain
+        self.apiKeyCipher = apiKeyCipher
     }
 
     func saveProfile(profile: APIProfile?, name: String, baseURL: String, apiKey: String, apiFormat: APIFormat, notes: String) throws -> APIProfile {
         let profile = profile ?? APIProfile(name: name, baseURL: baseURL, apiFormat: apiFormat, notes: notes)
-        if profile.keychainReference == nil { profile.keychainReference = "profile-\(profile.id.uuidString)" }
-        if apiKey.isEmpty { try keychain.delete(reference: profile.keychainReference!) } else { try keychain.save(apiKey, for: profile.keychainReference!) }
+        profile.encryptedAPIKey = apiKey.isEmpty ? nil : try apiKeyCipher.encrypt(apiKey)
+        profile.keychainReference = nil
         profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.apiFormat = apiFormat
@@ -26,16 +29,11 @@ final class ProfileRepository {
     }
 
     func apiKey(for profile: APIProfile) throws -> String {
-        guard let reference = profile.keychainReference else { return "" }
-        do {
-            return try keychain.read(reference: reference) ?? ""
-        } catch let error as KeychainError where error.shouldRetryAfterAuthentication {
-            return try keychain.read(reference: reference) ?? ""
-        }
+        guard let encryptedAPIKey = profile.encryptedAPIKey else { return "" }
+        return try apiKeyCipher.decrypt(encryptedAPIKey)
     }
 
     func delete(_ profile: APIProfile) throws {
-        if let reference = profile.keychainReference { try keychain.delete(reference: reference) }
         let profileID = profile.id
         let descriptor = FetchDescriptor<ModelTestRecord>(predicate: #Predicate { $0.profileID == profileID })
         for record in try modelContext.fetch(descriptor) { modelContext.delete(record) }

@@ -23,9 +23,13 @@ final class ContentViewModel: ObservableObject {
     private let tester: ModelTestService
     private var requestTask: Task<Void, Never>?
 
-    init(modelContext: ModelContext, keychain: KeychainStoring = KeychainStore(), client: APIClienting = URLSessionAPIClient()) {
+    init(
+        modelContext: ModelContext,
+        apiKeyCipher: any APIKeyEncrypting = LocalAPIKeyCipher(),
+        client: APIClienting = URLSessionAPIClient()
+    ) {
         self.modelContext = modelContext
-        self.repository = ProfileRepository(modelContext: modelContext, keychain: keychain)
+        self.repository = ProfileRepository(modelContext: modelContext, apiKeyCipher: apiKeyCipher)
         self.discovery = ModelDiscoveryService(client: client)
         self.tester = ModelTestService(client: client)
     }
