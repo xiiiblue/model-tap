@@ -30,6 +30,17 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Debug -sd
 
 如需避免使用默认DerivedData目录，可增加`-derivedDataPath /tmp/modeltap-deriveddata`。真实接口测试需要本地配置服务地址；Preview和单元测试不得依赖真实API。
 
+## 图标与发布打包
+
+- 应用图标资源位于`ModelTap/Assets.xcassets/AppIcon.appiconset/`，修改图标时同步维护macOS的16、32、128、256和512点位及其Retina尺寸。
+- UniversalRelease构建命令：
+
+```bash
+xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Release -sdk macosx ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO build
+```
+
+- DMG应使用Release产物中的`ModelTap.app`制作，发布前确认应用包含`arm64`和`x86_64`架构，并通过GitHubRelease上传DMG文件。
+
 ## 安全要求
 
 - API Key只能保存于macOS Keychain，不得写入SwiftData、源代码、日志或提交记录。
