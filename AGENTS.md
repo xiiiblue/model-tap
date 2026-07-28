@@ -30,6 +30,8 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Debug -sd
 
 如需避免使用默认DerivedData目录，可增加`-derivedDataPath /tmp/modeltap-deriveddata`。真实接口测试需要本地配置服务地址；Preview和单元测试不得依赖真实API。
 
+日常测试和界面迭代只构建`.app`供验证，不制作DMG、不创建GitHubRelease；只有用户明确要求发布、打包DMG或上传Release时，才执行完整发布流程。
+
 ## 图标与发布打包
 
 - 应用图标资源位于`ModelTap/Assets.xcassets/AppIcon.appiconset/`，修改图标时同步维护macOS的16、32、128、256和512点位及其Retina尺寸。
