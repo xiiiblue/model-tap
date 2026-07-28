@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ModelRowView: View {
     let model: ModelInfo
+    let isTesting: Bool
     let onCopy: () -> Void
     let onTest: () -> Void
 
@@ -23,12 +24,17 @@ struct ModelRowView: View {
             Button("测试", systemImage: "play", action: onTest)
                 .labelStyle(.titleAndIcon)
                 .buttonStyle(.bordered)
+                .disabled(isTesting)
         }
         .padding(.vertical, 5)
     }
 
     @ViewBuilder private var statusIcon: some View {
-        if let summary = model.latestTest {
+        if isTesting {
+            ProgressView()
+                .controlSize(.small)
+                .help("测试中")
+        } else if let summary = model.latestTest {
             Image(systemName: summary.success ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .foregroundStyle(summary.success ? .green : .red)
                 .help(summary.success ? "测试成功" : (summary.errorSummary ?? "测试失败"))

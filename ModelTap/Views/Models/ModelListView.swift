@@ -28,7 +28,7 @@ struct ModelListView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 0) {
                             ForEach(viewModel.filteredModels) { model in
-                                ModelRowView(model: model, onCopy: { Clipboard.copy(model.id); viewModel.notice = RequestNotice(message: "模型 ID 已复制") }, onTest: { viewModel.selectedModelID = model.id; viewModel.test(modelID: model.id) })
+                                ModelRowView(model: model, isTesting: viewModel.testingModelIDs.contains(model.id), onCopy: { Clipboard.copy(model.id); viewModel.notice = RequestNotice(message: "模型 ID 已复制") }, onTest: { viewModel.selectedModelID = model.id; viewModel.test(modelID: model.id) })
                                     .padding(.horizontal)
                                     .background(viewModel.selectedModelID == model.id ? Color.accentColor.opacity(0.08) : .clear)
                                     .contentShape(Rectangle())

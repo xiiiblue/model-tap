@@ -13,6 +13,7 @@ final class ContentViewModel: ObservableObject {
     @Published var selectedSummary: ModelTestSummary?
     @Published var isBatchTesting = false
     @Published var batchProgress: (completed: Int, total: Int)?
+    @Published private(set) var testingModelIDs: Set<String> = []
     @Published var lastDiscovery: (count: Int, duration: TimeInterval, date: Date)?
     @Published var editor: ProfileEditorState?
 
@@ -87,8 +88,10 @@ final class ContentViewModel: ObservableObject {
     func test(modelID: String) {
         guard let profile = selectedProfile else { return }
         requestTask?.cancel()
+        testingModelIDs = [modelID]
         requestTask = Task { [weak self] in
             guard let self else { return }
+            defer { testingModelIDs.remove(modelID) }
             let start = Date()
             do {
                 let key = try repository.apiKey(for: profile)
@@ -110,6 +113,7 @@ final class ContentViewModel: ObservableObject {
         requestTask?.cancel()
         isBatchTesting = true
         batchProgress = (0, filteredModels.count)
+        testingModelIDs.removeAll()
         let batchModels = filteredModels
         requestTask = Task { [weak self] in
             guard let self else { return }
@@ -117,9 +121,13 @@ final class ContentViewModel: ObservableObject {
             let baseURL = profile.baseURL
             let format = profile.apiFormat
             let profileID = profile.id
-            let runner = BatchTestRunner { [tester] id in try await tester.test(modelID: id, baseURL: baseURL, apiKey: key, format: format) }
+            let runner = BatchTestRunner { [weak self, tester] id in
+                self?.testingModelIDs = [id]
+                return try await tester.test(modelID: id, baseURL: baseURL, apiKey: key, format: format)
+            }
             let result = await runner.run(models: batchModels, onResult: { [weak self] id, result in
                 guard let self else { return }
+                defer { testingModelIDs.remove(id) }
                 switch result {
                 case .success(let summary):
                     updateModel(id: id, summary: summary)
@@ -132,11 +140,12 @@ final class ContentViewModel: ObservableObject {
             }, onProgress: { [weak self] completed, total in self?.batchProgress = (completed, total) })
             isBatchTesting = false
             batchProgress = nil
+            testingModelIDs.removeAll()
             notice = RequestNotice(message: "批量测试完成：成功 \(result.succeeded)，失败 \(result.failed)，耗时 \(Formatters.duration(result.duration))")
         }
     }
 
-    func cancel() { requestTask?.cancel(); requestTask = nil; isBatchTesting = false; batchProgress = nil; loadState = .idle }
+    func cancel() { requestTask?.cancel(); requestTask = nil; isBatchTesting = false; batchProgress = nil; testingModelIDs.removeAll(); loadState = .idle }
 
     private func updateModel(id: String, summary: ModelTestSummary) { if let index = models.firstIndex(where: { $0.id == id }) { models[index].latestTest = summary } }
     private func show(_ error: Error) { notice = RequestNotice(message: Self.friendlyMessage(error)) }
