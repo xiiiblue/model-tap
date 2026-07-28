@@ -8,7 +8,8 @@ final class EndpointResolverTests: XCTestCase {
             ("https://api.example.com/", "https://api.example.com"),
             ("https://api.example.com/v1/", "https://api.example.com/v1"),
             ("https://api.example.com/v1/models", "https://api.example.com/v1"),
-            ("https://api.example.com/v1/chat/completions", "https://api.example.com/v1")
+            ("https://api.example.com/v1/chat/completions", "https://api.example.com/v1"),
+            ("https://api.example.com/v1/messages", "https://api.example.com/v1")
         ]
         for (input, expected) in cases {
             XCTAssertEqual(try EndpointResolver(baseURLString: input).baseURL.absoluteString, expected)
@@ -20,6 +21,7 @@ final class EndpointResolverTests: XCTestCase {
         XCTAssertEqual(resolver.modelsURL.absoluteString, "https://example.test/custom/models")
         XCTAssertEqual(resolver.chatCompletionsURL.absoluteString, "https://example.test/custom/chat/completions")
         XCTAssertEqual(resolver.responsesURL.absoluteString, "https://example.test/custom/responses")
+        XCTAssertEqual(resolver.anthropicMessagesURL.absoluteString, "https://example.test/custom/messages")
     }
 
     func testRejectsInvalidURL() {

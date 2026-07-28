@@ -30,7 +30,7 @@ struct ProfileListView: View {
             ToolbarItem(placement: .primaryAction) { Button("新增配置", systemImage: "plus", action: onNew).help("Command-N") }
             ToolbarItem(placement: .automatic) { Button("设置", systemImage: "gear") { openSettings() }.help("打开设置") }
         }
-        .overlay { if profiles.isEmpty { ContentUnavailableView("还没有配置", systemImage: "externaldrive.badge.plus", description: Text("添加一个 OpenAI 兼容 API 开始使用。")) } }
+        .overlay { if profiles.isEmpty { ContentUnavailableView("还没有配置", systemImage: "externaldrive.badge.plus", description: Text("添加一个 LLM API 配置开始使用。")) } }
     }
 
     @ViewBuilder private func profileMenu(_ profile: APIProfile) -> some View {

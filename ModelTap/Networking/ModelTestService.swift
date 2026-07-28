@@ -14,6 +14,14 @@ struct ResponsesResponse: Decodable, Sendable {
 }
 struct ResponseOutputItem: Decodable, Sendable { let content: [ResponseContentItem]? }
 struct ResponseContentItem: Decodable, Sendable { let text: String? }
+struct AnthropicMessagesResponse: Decodable, Sendable {
+    let content: [AnthropicContentItem]
+    let usage: UsagePayload?
+}
+struct AnthropicContentItem: Decodable, Sendable {
+    let type: String?
+    let text: String?
+}
 struct UsagePayload: Decodable, Sendable {
     let promptTokens: Int?
     let completionTokens: Int?
@@ -28,19 +36,18 @@ struct UsagePayload: Decodable, Sendable {
     var modelUsage: TokenUsage { TokenUsage(promptTokens: promptTokens, completionTokens: completionTokens, totalTokens: totalTokens) }
 }
 
-enum ModelTestServiceError: Error, LocalizedError, Sendable {
-    case chatUnsupported(APIError)
-    var errorDescription: String? { if case .chatUnsupported(let error) = self { return error.localizedDescription }; return nil }
-}
-
 struct ModelTestService: Sendable {
     let client: APIClienting
     let prompt = "仅回复：OK"
 
-    func test(modelID: String, baseURL: String, apiKey: String) async throws -> ModelTestSummary {
-        do { return try await testChat(modelID: modelID, baseURL: baseURL, apiKey: apiKey) }
-        catch ModelTestServiceError.chatUnsupported(let error) where isUnsupported(error) {
+    func test(modelID: String, baseURL: String, apiKey: String, format: APIFormat) async throws -> ModelTestSummary {
+        switch format {
+        case .openAI:
+            return try await testChat(modelID: modelID, baseURL: baseURL, apiKey: apiKey)
+        case .openAIResponses:
             return try await testResponses(modelID: modelID, baseURL: baseURL, apiKey: apiKey)
+        case .anthropic:
+            return try await testAnthropicMessages(modelID: modelID, baseURL: baseURL, apiKey: apiKey)
         }
     }
 
@@ -52,7 +59,7 @@ struct ModelTestService: Sendable {
         addAuthorization(to: &request, apiKey: apiKey)
         request.httpBody = try JSONSerialization.data(withJSONObject: ["model": modelID, "messages": [["role": "user", "content": prompt]], "temperature": 0, "max_tokens": 16, "stream": false])
         let (data, response, duration) = try await client.request(request)
-        guard (200..<300).contains(response.statusCode) else { throw ModelTestServiceError.chatUnsupported(ModelDiscoveryService.httpError(response, data: data)) }
+        guard (200..<300).contains(response.statusCode) else { throw ModelDiscoveryService.httpError(response, data: data) }
         let decoded: ChatCompletionsResponse
         do { decoded = try JSONDecoder().decode(ChatCompletionsResponse.self, from: data) } catch { throw APIError.invalidJSON("Chat Completions 响应") }
         guard let output = decoded.choices.first?.message?.content ?? decoded.choices.first?.text, !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw APIError.invalidModelOutput }
@@ -75,12 +82,24 @@ struct ModelTestService: Sendable {
         return ModelTestSummary(success: true, statusCode: response.statusCode, duration: duration, testedAt: .now, protocolName: .responses, output: output, errorSummary: nil, tokenUsage: decoded.usage?.modelUsage)
     }
 
-    private func addAuthorization(to request: inout URLRequest, apiKey: String) {
-        if !apiKey.isEmpty { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
+    private func testAnthropicMessages(modelID: String, baseURL: String, apiKey: String) async throws -> ModelTestSummary {
+        let resolver = try EndpointResolver(baseURLString: baseURL)
+        var request = URLRequest(url: resolver.anthropicMessagesURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        if !apiKey.isEmpty { request.setValue(apiKey, forHTTPHeaderField: "x-api-key") }
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": modelID, "max_tokens": 16, "messages": [["role": "user", "content": prompt]]])
+        let (data, response, duration) = try await client.request(request)
+        guard (200..<300).contains(response.statusCode) else { throw ModelDiscoveryService.httpError(response, data: data) }
+        let decoded: AnthropicMessagesResponse
+        do { decoded = try JSONDecoder().decode(AnthropicMessagesResponse.self, from: data) } catch { throw APIError.invalidJSON("Anthropic Messages 响应") }
+        let output = decoded.content.compactMap { $0.type == "text" ? $0.text : nil }.joined()
+        guard !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw APIError.invalidModelOutput }
+        return ModelTestSummary(success: true, statusCode: response.statusCode, duration: duration, testedAt: .now, protocolName: .anthropicMessages, output: output, errorSummary: nil, tokenUsage: decoded.usage?.modelUsage)
     }
 
-    private func isUnsupported(_ error: APIError) -> Bool {
-        guard case .http(let status, _, let kind) = error else { return false }
-        return (status == 404 || status == 405) && kind == .protocolError
+    private func addAuthorization(to request: inout URLRequest, apiKey: String) {
+        if !apiKey.isEmpty { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
     }
 }

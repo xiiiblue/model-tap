@@ -41,7 +41,7 @@ final class ContentViewModel: ObservableObject {
     func saveEditor() {
         guard let editor else { return }
         do {
-            let profile = try repository.saveProfile(profile: editor.profile, name: editor.name, baseURL: editor.baseURL, apiKey: editor.apiKey, notes: editor.notes)
+            let profile = try repository.saveProfile(profile: editor.profile, name: editor.name, baseURL: editor.baseURL, apiKey: editor.apiKey, apiFormat: editor.apiFormat, notes: editor.notes)
             selectedProfile = profile
             self.editor = nil
             notice = RequestNotice(message: "配置已保存")
@@ -66,7 +66,7 @@ final class ContentViewModel: ObservableObject {
             guard let self else { return }
             do {
                 let key = try repository.apiKey(for: profile)
-                let result = try await discovery.discover(baseURL: profile.baseURL, apiKey: key)
+                let result = try await discovery.discover(baseURL: profile.baseURL, apiKey: key, format: profile.apiFormat)
                 models = result.models
                 lastDiscovery = (result.models.count, result.duration, result.testedAt)
                 selectedModelID = models.first?.id
@@ -92,7 +92,7 @@ final class ContentViewModel: ObservableObject {
             let start = Date()
             do {
                 let key = try repository.apiKey(for: profile)
-                let summary = try await tester.test(modelID: modelID, baseURL: profile.baseURL, apiKey: key)
+                let summary = try await tester.test(modelID: modelID, baseURL: profile.baseURL, apiKey: key, format: profile.apiFormat)
                 updateModel(id: modelID, summary: summary)
                 selectedSummary = summary
                 try repository.saveTestRecord(summary, modelID: modelID, profile: profile)
@@ -115,8 +115,9 @@ final class ContentViewModel: ObservableObject {
             guard let self else { return }
             let key = (try? repository.apiKey(for: profile)) ?? ""
             let baseURL = profile.baseURL
+            let format = profile.apiFormat
             let profileID = profile.id
-            let runner = BatchTestRunner { [tester] id in try await tester.test(modelID: id, baseURL: baseURL, apiKey: key) }
+            let runner = BatchTestRunner { [tester] id in try await tester.test(modelID: id, baseURL: baseURL, apiKey: key, format: format) }
             let result = await runner.run(models: batchModels, onResult: { [weak self] id, result in
                 guard let self else { return }
                 switch result {
@@ -150,7 +151,8 @@ struct ProfileEditorState: Identifiable {
     var name = ""
     var baseURL = ""
     var apiKey = ""
+    var apiFormat: APIFormat = .openAI
     var notes = ""
     init() {}
-    init(profile: APIProfile, apiKey: String) { self.profile = profile; self.name = profile.name; self.baseURL = profile.baseURL; self.apiKey = apiKey; self.notes = profile.notes }
+    init(profile: APIProfile, apiKey: String) { self.profile = profile; self.name = profile.name; self.baseURL = profile.baseURL; self.apiKey = apiKey; self.apiFormat = profile.apiFormat; self.notes = profile.notes }
 }

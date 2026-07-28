@@ -16,6 +16,32 @@ struct ProfileEditorView: View {
                     fieldRow("Base URL") {
                         LeadingAlignedTextField(text: binding(\.baseURL))
                     }
+                    fieldRow("API格式") {
+                        Menu {
+                            ForEach(APIFormat.allCases, id: \.self) { format in
+                                Button {
+                                    editor?.apiFormat = format
+                                } label: {
+                                    HStack {
+                                        Text(format.title)
+                                        if editor?.apiFormat == format {
+                                            Spacer()
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Text(editor?.apiFormat.title ?? APIFormat.openAI.title)
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .menuStyle(.borderlessButton)
+                        .accessibilityLabel("API格式")
+                    }
                     fieldRow("API Key（可选）") {
                         HStack {
                             if isKeyVisible {

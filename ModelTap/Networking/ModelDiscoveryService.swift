@@ -8,23 +8,46 @@ struct ModelListResponse: Decodable, Sendable {
 struct RemoteModel: Decodable, Sendable {
     let id: String
     let object: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case object
+        case type
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        object = try container.decodeIfPresent(String.self, forKey: .object)
+            ?? container.decodeIfPresent(String.self, forKey: .type)
+    }
 }
 
 struct ModelDiscoveryService: Sendable {
     let client: APIClienting
 
-    func discover(baseURL: String, apiKey: String) async throws -> (models: [ModelInfo], duration: TimeInterval, statusCode: Int, testedAt: Date) {
+    func discover(baseURL: String, apiKey: String, format: APIFormat) async throws -> (models: [ModelInfo], duration: TimeInterval, statusCode: Int, testedAt: Date) {
         let resolver = try EndpointResolver(baseURLString: baseURL)
         var request = URLRequest(url: resolver.modelsURL)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if !apiKey.isEmpty { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
+        addAuthentication(to: &request, apiKey: apiKey, format: format)
         let (data, response, duration) = try await client.request(request)
         guard (200..<300).contains(response.statusCode) else { throw Self.httpError(response, data: data) }
         let decoded: ModelListResponse
         do { decoded = try JSONDecoder().decode(ModelListResponse.self, from: data) } catch { throw APIError.invalidJSON("模型列表") }
         guard !decoded.data.isEmpty else { throw APIError.emptyModels }
         return (decoded.data.map { ModelInfo(id: $0.id, object: $0.object, latestTest: nil) }, duration, response.statusCode, .now)
+    }
+
+    private func addAuthentication(to request: inout URLRequest, apiKey: String, format: APIFormat) {
+        switch format {
+        case .openAI, .openAIResponses:
+            if !apiKey.isEmpty { request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization") }
+        case .anthropic:
+            if !apiKey.isEmpty { request.setValue(apiKey, forHTTPHeaderField: "x-api-key") }
+            request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        }
     }
 
     static func httpError(_ response: HTTPURLResponse, data: Data) -> APIError {

@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-ModelTap是使用SwiftUI和SwiftData编写的macOS原生工具，用于发现、验证和管理OpenAI兼容的LLM API。最低支持macOS 14，项目使用Swift 6。
+ModelTap是使用SwiftUI和SwiftData编写的macOS原生工具，用于发现、验证和管理LLM API。最低支持macOS 14，项目使用Swift 6。
 
 ## 目录约定
 
@@ -46,6 +46,8 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Release -
 ## 安全要求
 
 - API Key只能保存于macOS Keychain，不得写入SwiftData、源代码、日志或提交记录；配置编辑器默认隐藏，用户可通过眼睛按钮切换明文显示。
+- API格式随配置持久化：`openai`对应Chat Completions、`openai-response`对应Responses、`anthropic`对应Messages。已有配置迁移时默认`openai`。
+- OpenAI格式使用`Authorization: Bearer`；Anthropic格式使用`x-api-key`和`anthropic-version: 2023-06-01`，不得向Anthropic请求发送Bearer密钥。协议由用户选择，不做自动回退。
 - 不要提交`.env`、密钥文件、用户数据、构建产物或Xcode用户状态。
 - 日志和错误信息不得输出Authorization请求头；除配置编辑器输入框外，界面展示密钥时必须使用脱敏值。
 - 新增网络请求或持久化字段时，先确认不会扩大权限、遥测或敏感数据暴露范围。

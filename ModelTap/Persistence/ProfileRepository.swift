@@ -11,12 +11,13 @@ final class ProfileRepository {
         self.keychain = keychain
     }
 
-    func saveProfile(profile: APIProfile?, name: String, baseURL: String, apiKey: String, notes: String) throws -> APIProfile {
-        let profile = profile ?? APIProfile(name: name, baseURL: baseURL, notes: notes)
+    func saveProfile(profile: APIProfile?, name: String, baseURL: String, apiKey: String, apiFormat: APIFormat, notes: String) throws -> APIProfile {
+        let profile = profile ?? APIProfile(name: name, baseURL: baseURL, apiFormat: apiFormat, notes: notes)
         if profile.keychainReference == nil { profile.keychainReference = "profile-\(profile.id.uuidString)" }
         if apiKey.isEmpty { try keychain.delete(reference: profile.keychainReference!) } else { try keychain.save(apiKey, for: profile.keychainReference!) }
         profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        profile.apiFormat = apiFormat
         profile.notes = notes
         profile.updatedAt = .now
         if profile.modelContext == nil { modelContext.insert(profile) }
@@ -40,7 +41,7 @@ final class ProfileRepository {
 
     func duplicate(_ profile: APIProfile) throws -> APIProfile {
         let key = try apiKey(for: profile)
-        return try saveProfile(profile: nil, name: "\(profile.name) 副本", baseURL: profile.baseURL, apiKey: key, notes: profile.notes)
+        return try saveProfile(profile: nil, name: "\(profile.name) 副本", baseURL: profile.baseURL, apiKey: key, apiFormat: profile.apiFormat, notes: profile.notes)
     }
 
     func saveTestRecord(_ summary: ModelTestSummary, modelID: String, profile: APIProfile) throws {

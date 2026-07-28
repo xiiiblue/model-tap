@@ -52,7 +52,7 @@ struct ContentView: View {
 
     private func copyURL(_ profile: APIProfile) { Clipboard.copy(profile.baseURL); viewModel.notice = RequestNotice(message: "Base URL 已复制") }
     private func copyKey(_ profile: APIProfile) { let key = try? viewModel.repository.apiKey(for: profile); Clipboard.copy(key ?? ""); viewModel.notice = RequestNotice(message: "API Key 已复制") }
-    private func copyEnvironment(_ profile: APIProfile) { let key = (try? viewModel.repository.apiKey(for: profile)) ?? ""; Clipboard.copy("export OPENAI_BASE_URL=\"\(profile.baseURL)\"\nexport OPENAI_API_KEY=\"\(key)\""); viewModel.notice = RequestNotice(message: "环境变量示例已复制") }
+    private func copyEnvironment(_ profile: APIProfile) { let key = (try? viewModel.repository.apiKey(for: profile)) ?? ""; Clipboard.copy(environmentExample(for: profile, apiKey: key)); viewModel.notice = RequestNotice(message: "环境变量示例已复制") }
 }
 
 private struct ProfileDetailHeader: View {
@@ -60,15 +60,28 @@ private struct ProfileDetailHeader: View {
     @ObservedObject var viewModel: ContentViewModel
     var body: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) { Text(profile.name).font(.title2.weight(.semibold)); Text(profile.baseURL).font(.callout).foregroundStyle(.secondary).textSelection(.enabled) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(profile.name).font(.title2.weight(.semibold))
+                Text(profile.baseURL).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                Text(profile.apiFormat.title).font(.caption).foregroundStyle(.secondary)
+            }
             Spacer()
             Label(profile.testStatus.title, systemImage: profile.testStatus == .success ? "checkmark.circle.fill" : profile.testStatus == .failure ? "xmark.circle.fill" : "questionmark.circle").foregroundStyle(profile.testStatus == .success ? .green : profile.testStatus == .failure ? .red : .secondary)
             Button("编辑", systemImage: "pencil") { viewModel.edit(profile) }
             Button("查询模型", systemImage: "arrow.clockwise", action: viewModel.discover).disabled(viewModel.loadState == .loading || viewModel.isBatchTesting)
             Button("测试全部", systemImage: "play.fill", action: viewModel.testAll).disabled(viewModel.models.isEmpty || viewModel.isBatchTesting)
             if viewModel.isBatchTesting { Button("取消", role: .cancel, action: viewModel.cancel) }
-            Menu { Button("复制 Base URL") { Clipboard.copy(profile.baseURL) }; Button("复制 API Key") { if let key = try? viewModel.repository.apiKey(for: profile) { Clipboard.copy(key) } }; Button("复制环境变量") { let key = (try? viewModel.repository.apiKey(for: profile)) ?? ""; Clipboard.copy("export OPENAI_BASE_URL=\"\(profile.baseURL)\"\nexport OPENAI_API_KEY=\"\(key)\"") } } label: { Image(systemName: "ellipsis.circle") }
+            Menu { Button("复制 Base URL") { Clipboard.copy(profile.baseURL) }; Button("复制 API Key") { if let key = try? viewModel.repository.apiKey(for: profile) { Clipboard.copy(key) } }; Button("复制环境变量") { let key = (try? viewModel.repository.apiKey(for: profile)) ?? ""; Clipboard.copy(environmentExample(for: profile, apiKey: key)) } } label: { Image(systemName: "ellipsis.circle") }
         }
         .padding()
+    }
+}
+
+private func environmentExample(for profile: APIProfile, apiKey: String) -> String {
+    switch profile.apiFormat {
+    case .openAI, .openAIResponses:
+        return "export OPENAI_BASE_URL=\"\(profile.baseURL)\"\nexport OPENAI_API_KEY=\"\(apiKey)\""
+    case .anthropic:
+        return "export ANTHROPIC_BASE_URL=\"\(profile.baseURL)\"\nexport ANTHROPIC_API_KEY=\"\(apiKey)\""
     }
 }

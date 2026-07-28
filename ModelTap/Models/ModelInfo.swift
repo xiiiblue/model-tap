@@ -20,6 +20,7 @@ struct ModelTestSummary: Hashable, Sendable {
 enum APIProtocolName: String, Codable, Sendable {
     case chatCompletions = "Chat Completions"
     case responses = "Responses"
+    case anthropicMessages = "Anthropic Messages"
 }
 
 struct TokenUsage: Codable, Hashable, Sendable {

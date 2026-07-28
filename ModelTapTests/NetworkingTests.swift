@@ -26,6 +26,14 @@ final class NetworkingTests: XCTestCase {
         XCTAssertEqual(response.usage?.modelUsage.promptTokens, 4)
     }
 
+    func testAnthropicResponseParsing() throws {
+        let data = Data(#"{"content":[{"type":"text","text":"OK"}],"usage":{"input_tokens":4,"output_tokens":1}}"#.utf8)
+        let response = try JSONDecoder().decode(AnthropicMessagesResponse.self, from: data)
+        XCTAssertEqual(response.content.first?.text, "OK")
+        XCTAssertEqual(response.usage?.modelUsage.promptTokens, 4)
+        XCTAssertEqual(response.usage?.modelUsage.completionTokens, 1)
+    }
+
     func testHTTPErrorMapping() {
         for status in [401, 404, 429, 500] {
             let response = HTTPURLResponse(url: URL(string: "https://example.test")!, statusCode: status, httpVersion: nil, headerFields: nil)!
@@ -36,11 +44,31 @@ final class NetworkingTests: XCTestCase {
 
     func testAuthorizationAndEmptyKey() async throws {
         let client = RecordingClient(data: Data(#"{"object":"list","data":[{"id":"one"}]}"#.utf8), status: 200)
-        _ = try await ModelDiscoveryService(client: client).discover(baseURL: "https://example.test/v1", apiKey: "sk-fake-key")
+        _ = try await ModelDiscoveryService(client: client).discover(baseURL: "https://example.test/v1", apiKey: "sk-fake-key", format: .openAI)
         XCTAssertEqual(client.lastRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer sk-fake-key")
         let noKeyClient = RecordingClient(data: Data(#"{"object":"list","data":[{"id":"one"}]}"#.utf8), status: 200)
-        _ = try await ModelDiscoveryService(client: noKeyClient).discover(baseURL: "https://example.test/v1", apiKey: "")
+        _ = try await ModelDiscoveryService(client: noKeyClient).discover(baseURL: "https://example.test/v1", apiKey: "", format: .openAI)
         XCTAssertNil(noKeyClient.lastRequest?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testAnthropicDiscoveryUsesAnthropicHeaders() async throws {
+        let client = RecordingClient(data: Data(#"{"data":[{"id":"claude-example","type":"model"}]}"#.utf8), status: 200)
+        let result = try await ModelDiscoveryService(client: client).discover(baseURL: "https://example.test/v1", apiKey: "anthropic-fake-key", format: .anthropic)
+        XCTAssertEqual(result.models.first?.id, "claude-example")
+        XCTAssertEqual(result.models.first?.object, "model")
+        XCTAssertEqual(client.lastRequest?.value(forHTTPHeaderField: "x-api-key"), "anthropic-fake-key")
+        XCTAssertEqual(client.lastRequest?.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01")
+        XCTAssertNil(client.lastRequest?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testAnthropicTestUsesMessagesRequest() async throws {
+        let client = RecordingClient(data: Data(#"{"content":[{"type":"text","text":"OK"}],"usage":{"input_tokens":4,"output_tokens":1}}"#.utf8), status: 200)
+        let summary = try await ModelTestService(client: client).test(modelID: "claude-example", baseURL: "https://example.test/v1", apiKey: "anthropic-fake-key", format: .anthropic)
+        XCTAssertTrue(summary.success)
+        XCTAssertEqual(summary.protocolName, .anthropicMessages)
+        XCTAssertEqual(client.lastRequest?.url?.absoluteString, "https://example.test/v1/messages")
+        XCTAssertEqual(client.lastRequest?.value(forHTTPHeaderField: "x-api-key"), "anthropic-fake-key")
+        XCTAssertNil(client.lastRequest?.value(forHTTPHeaderField: "Authorization"))
     }
 }
 
