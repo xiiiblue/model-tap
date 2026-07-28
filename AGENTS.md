@@ -43,9 +43,9 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Release -
 
 ## 安全要求
 
-- API Key只能保存于macOS Keychain，不得写入SwiftData、源代码、日志或提交记录。
+- API Key只能保存于macOS Keychain，不得写入SwiftData、源代码、日志或提交记录；配置编辑器默认明文显示，用户可通过眼睛按钮切换隐藏。
 - 不要提交`.env`、密钥文件、用户数据、构建产物或Xcode用户状态。
-- 日志和错误信息不得输出Authorization请求头；界面展示密钥时必须使用脱敏值。
+- 日志和错误信息不得输出Authorization请求头；除配置编辑器输入框外，界面展示密钥时必须使用脱敏值。
 - 新增网络请求或持久化字段时，先确认不会扩大权限、遥测或敏感数据暴露范围。
 
 ## 修改与交接
