@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct ProfileEditorView: View {
     @Binding var editor: ProfileEditorState?
@@ -10,26 +11,17 @@ struct ProfileEditorView: View {
             Form {
                 Section("接口配置") {
                     fieldRow("配置名称") {
-                        TextField("", text: binding(\.name))
-                            .textFieldStyle(.plain)
-                            .multilineTextAlignment(.leading)
+                        LeadingAlignedTextField(text: binding(\.name))
                     }
                     fieldRow("Base URL") {
-                        TextField("", text: binding(\.baseURL))
-                            .textFieldStyle(.plain)
-                            .textContentType(.URL)
-                            .multilineTextAlignment(.leading)
+                        LeadingAlignedTextField(text: binding(\.baseURL))
                     }
                     fieldRow("API Key（可选）") {
                         HStack {
                             if isKeyVisible {
-                                TextField("", text: binding(\.apiKey))
-                                    .textFieldStyle(.plain)
-                                    .multilineTextAlignment(.leading)
+                                LeadingAlignedTextField(text: binding(\.apiKey))
                             } else {
-                                SecureField("", text: binding(\.apiKey))
-                                    .textFieldStyle(.plain)
-                                    .multilineTextAlignment(.leading)
+                                LeadingAlignedTextField(text: binding(\.apiKey), isSecure: true)
                             }
                             Button { isKeyVisible.toggle() } label: { Image(systemName: isKeyVisible ? "eye.slash" : "eye") }
                                 .buttonStyle(.borderless)
@@ -75,5 +67,46 @@ struct ProfileEditorView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct LeadingAlignedTextField: NSViewRepresentable {
+    @Binding var text: String
+    var isSecure = false
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSTextField {
+        let textField: NSTextField = isSecure ? NSSecureTextField() : NSTextField()
+        textField.alignment = .left
+        textField.isBezeled = false
+        textField.drawsBackground = false
+        textField.focusRingType = .default
+        textField.delegate = context.coordinator
+        textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return textField
+    }
+
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        if nsView.stringValue != text {
+            nsView.stringValue = text
+        }
+        nsView.alignment = .left
+    }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        private var parent: LeadingAlignedTextField
+
+        init(_ parent: LeadingAlignedTextField) {
+            self.parent = parent
+        }
+
+        func controlTextDidChange(_ notification: Notification) {
+            guard let textField = notification.object as? NSTextField else { return }
+            parent.text = textField.stringValue
+        }
     }
 }
