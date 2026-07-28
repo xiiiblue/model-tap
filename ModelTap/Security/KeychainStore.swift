@@ -10,6 +10,13 @@ protocol KeychainStoring: Sendable {
 enum KeychainError: LocalizedError {
     case unexpectedStatus(OSStatus)
 
+    var shouldRetryAfterAuthentication: Bool {
+        if case .unexpectedStatus(let status) = self {
+            return status == errSecAuthFailed
+        }
+        return false
+    }
+
     var errorDescription: String? {
         switch self {
         case .unexpectedStatus(let status): return "Keychain 操作失败（\(status)）"

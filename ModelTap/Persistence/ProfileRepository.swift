@@ -27,7 +27,11 @@ final class ProfileRepository {
 
     func apiKey(for profile: APIProfile) throws -> String {
         guard let reference = profile.keychainReference else { return "" }
-        return try keychain.read(reference: reference) ?? ""
+        do {
+            return try keychain.read(reference: reference) ?? ""
+        } catch let error as KeychainError where error.shouldRetryAfterAuthentication {
+            return try keychain.read(reference: reference) ?? ""
+        }
     }
 
     func delete(_ profile: APIProfile) throws {

@@ -46,6 +46,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Release -
 ## 安全要求
 
 - API Key只能保存于macOS Keychain，不得写入SwiftData、源代码、日志或提交记录；配置编辑器默认隐藏，用户可通过眼睛按钮切换明文显示。
+- 本地临时签名构建的指定要求只包含本次二进制`cdhash`，重新构建后首次访问已有钥匙串条目可能再次弹出授权。`ProfileRepository.apiKey`遇到`errSecAuthFailed`时自动重试一次，使用户授权后继续原操作；不得对用户取消等其他状态重试。正式发布使用稳定Developer ID签名。
 - API格式随配置持久化：`openai`对应Chat Completions、`openai-response`对应Responses、`anthropic`对应Messages。已有配置迁移时默认`openai`。
 - OpenAI格式使用`Authorization: Bearer`；Anthropic格式使用`x-api-key`和`anthropic-version: 2023-06-01`，不得向Anthropic请求发送Bearer密钥。协议由用户选择，不做自动回退。
 - 不要提交`.env`、密钥文件、用户数据、构建产物或Xcode用户状态。

@@ -19,6 +19,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTapTests -configuration Debu
 - API Key 只保存于 macOS Keychain；SwiftData 仅保存随机 Keychain 引用标识。
 - 应用不会上传遥测、同步数据或请求无关权限。
 - 日志和错误展示不输出 Authorization 请求头；配置编辑器默认隐藏密钥，用户可手动切换明文显示。
+- 本地重新构建的临时签名App首次读取已有API Key时，macOS可能弹出钥匙串授权；授权成功后应用会自动重试并继续原操作。正式发布应使用稳定的Developer ID签名，避免每次构建因`cdhash`变化而重新授权。
 - 示例数据使用虚构地址和密钥，不包含真实凭据。
 
 ## 已实现

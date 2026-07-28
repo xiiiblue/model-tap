@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import SwiftData
 import XCTest
 @testable import ModelTap
@@ -15,6 +16,28 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertEqual(try keychain.read(reference: "profile-1"), "sk-fake")
         try keychain.delete(reference: "profile-1")
         XCTAssertNil(try keychain.read(reference: "profile-1"))
+    }
+
+    @MainActor func testRepositoryRetriesKeychainReadAfterAuthentication() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: APIProfile.self,
+            ModelTestRecord.self,
+            configurations: configuration
+        )
+        let keychain = AuthenticationRetryKeychain()
+        let repository = ProfileRepository(
+            modelContext: container.mainContext,
+            keychain: keychain
+        )
+        let profile = APIProfile(
+            name: "测试配置",
+            baseURL: "https://example.test/v1",
+            keychainReference: "profile-auth-retry"
+        )
+
+        XCTAssertEqual(try repository.apiKey(for: profile), "sk-fake")
+        XCTAssertEqual(keychain.readCount, 2)
     }
 
     @MainActor func testBatchContinuesAfterOneFailure() async {
@@ -61,6 +84,22 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertFalse(viewModel.testingModelIDs.contains("gpt-example"))
         XCTAssertTrue(viewModel.models.first?.latestTest?.success == true)
     }
+}
+
+private final class AuthenticationRetryKeychain: KeychainStoring, @unchecked Sendable {
+    private(set) var readCount = 0
+
+    func save(_ value: String, for reference: String) throws {}
+
+    func read(reference: String) throws -> String? {
+        readCount += 1
+        if readCount == 1 {
+            throw KeychainError.unexpectedStatus(errSecAuthFailed)
+        }
+        return "sk-fake"
+    }
+
+    func delete(reference: String) throws {}
 }
 
 private struct DelayedAPIClient: APIClienting {
