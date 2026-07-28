@@ -49,13 +49,7 @@ private struct ProfileRow: View {
     let profile: APIProfile
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack {
-                Text(profile.name).font(.headline)
-                Spacer()
-                Label(profile.testStatus.title, systemImage: profile.testStatus == .success ? "checkmark.circle.fill" : profile.testStatus == .failure ? "xmark.circle.fill" : "questionmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(profile.testStatus == .success ? .green : profile.testStatus == .failure ? .red : .secondary)
-            }
+            Text(profile.name).font(.headline)
             Text(profile.baseURL)
                 .font(.callout)
                 .foregroundStyle(.secondary)
