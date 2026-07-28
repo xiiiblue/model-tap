@@ -13,6 +13,9 @@ struct ProfileEditorView: View {
                     fieldRow("配置名称") {
                         LeadingAlignedTextField(text: binding(\.name))
                     }
+                    fieldRow("分类（可选）") {
+                        LeadingAlignedTextField(text: binding(\.category))
+                    }
                     fieldRow("Base URL") {
                         LeadingAlignedTextField(text: binding(\.baseURL))
                     }

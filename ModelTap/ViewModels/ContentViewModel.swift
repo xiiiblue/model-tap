@@ -46,7 +46,7 @@ final class ContentViewModel: ObservableObject {
     func saveEditor() {
         guard let editor else { return }
         do {
-            let profile = try repository.saveProfile(profile: editor.profile, name: editor.name, baseURL: editor.baseURL, apiKey: editor.apiKey, apiFormat: editor.apiFormat, notes: editor.notes)
+            let profile = try repository.saveProfile(profile: editor.profile, name: editor.name, baseURL: editor.baseURL, apiKey: editor.apiKey, apiFormat: editor.apiFormat, category: editor.category, notes: editor.notes)
             selectedProfile = profile
             self.editor = nil
             notice = RequestNotice(message: "配置已保存")
@@ -167,7 +167,8 @@ struct ProfileEditorState: Identifiable {
     var baseURL = ""
     var apiKey = ""
     var apiFormat: APIFormat = .openAI
+    var category = ""
     var notes = ""
     init() {}
-    init(profile: APIProfile, apiKey: String) { self.profile = profile; self.name = profile.name; self.baseURL = profile.baseURL; self.apiKey = apiKey; self.apiFormat = profile.apiFormat; self.notes = profile.notes }
+    init(profile: APIProfile, apiKey: String) { self.profile = profile; self.name = profile.name; self.baseURL = profile.baseURL; self.apiKey = apiKey; self.apiFormat = profile.apiFormat; self.category = profile.category ?? ""; self.notes = profile.notes }
 }

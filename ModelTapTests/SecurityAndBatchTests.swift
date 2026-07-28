@@ -41,12 +41,14 @@ final class SecurityAndBatchTests: XCTestCase {
             baseURL: "https://example.test/v1",
             apiKey: "sk-fake",
             apiFormat: .openAI,
+            category: "开发环境",
             notes: ""
         )
 
         XCTAssertEqual(try repository.apiKey(for: profile), "sk-fake")
         XCTAssertEqual(profile.encryptedAPIKey, Data("encrypted:sk-fake".utf8))
         XCTAssertNil(profile.keychainReference)
+        XCTAssertEqual(profile.category, "开发环境")
     }
 
     @MainActor func testBatchContinuesAfterOneFailure() async {
@@ -79,6 +81,7 @@ final class SecurityAndBatchTests: XCTestCase {
             baseURL: "https://example.test/v1",
             apiKey: "",
             apiFormat: .openAI,
+            category: "",
             notes: ""
         )
         viewModel.selectedProfile = profile

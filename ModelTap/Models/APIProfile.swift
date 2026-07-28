@@ -43,8 +43,9 @@ final class APIProfile {
     // 仅为兼容旧版SwiftData结构保留；新代码不会访问macOS Keychain。
     var keychainReference: String?
     var apiFormatRaw: String = APIFormat.openAI.rawValue
+    var category: String?
 
-    init(id: UUID = UUID(), name: String, baseURL: String, apiFormat: APIFormat = .openAI, notes: String = "") {
+    init(id: UUID = UUID(), name: String, baseURL: String, apiFormat: APIFormat = .openAI, category: String = "", notes: String = "") {
         self.id = id
         self.name = name
         self.baseURL = baseURL
@@ -56,6 +57,7 @@ final class APIProfile {
         self.encryptedAPIKey = nil
         self.keychainReference = nil
         self.apiFormatRaw = apiFormat.rawValue
+        self.category = category.isEmpty ? nil : category
     }
 
     var testStatus: ProfileTestStatus {

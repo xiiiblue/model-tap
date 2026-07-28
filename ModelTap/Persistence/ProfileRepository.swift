@@ -14,13 +14,15 @@ final class ProfileRepository {
         self.apiKeyCipher = apiKeyCipher
     }
 
-    func saveProfile(profile: APIProfile?, name: String, baseURL: String, apiKey: String, apiFormat: APIFormat, notes: String) throws -> APIProfile {
-        let profile = profile ?? APIProfile(name: name, baseURL: baseURL, apiFormat: apiFormat, notes: notes)
+    func saveProfile(profile: APIProfile?, name: String, baseURL: String, apiKey: String, apiFormat: APIFormat, category: String, notes: String) throws -> APIProfile {
+        let profile = profile ?? APIProfile(name: name, baseURL: baseURL, apiFormat: apiFormat, category: category, notes: notes)
+        let trimmedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.encryptedAPIKey = apiKey.isEmpty ? nil : try apiKeyCipher.encrypt(apiKey)
         profile.keychainReference = nil
         profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
         profile.apiFormat = apiFormat
+        profile.category = trimmedCategory.isEmpty ? nil : trimmedCategory
         profile.notes = notes
         profile.updatedAt = .now
         if profile.modelContext == nil { modelContext.insert(profile) }
@@ -43,7 +45,7 @@ final class ProfileRepository {
 
     func duplicate(_ profile: APIProfile) throws -> APIProfile {
         let key = try apiKey(for: profile)
-        return try saveProfile(profile: nil, name: "\(profile.name) 副本", baseURL: profile.baseURL, apiKey: key, apiFormat: profile.apiFormat, notes: profile.notes)
+        return try saveProfile(profile: nil, name: "\(profile.name) 副本", baseURL: profile.baseURL, apiKey: key, apiFormat: profile.apiFormat, category: profile.category ?? "", notes: profile.notes)
     }
 
     func saveTestRecord(_ summary: ModelTestSummary, modelID: String, profile: APIProfile) throws {

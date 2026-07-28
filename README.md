@@ -25,7 +25,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTapTests -configuration Debu
 
 ## 已实现
 
-- 配置新增、编辑、删除、复制。
+- 配置新增、编辑、删除、复制，并支持自定义分类；侧边栏按分类分组，空分类归入“未分类”。
 - 配置级 API 格式选择：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages。
 - Base URL 规范化，并保留用户实际 API 前缀；可直接填写`/models`、`/chat/completions`、`/responses`或`/messages`完整地址。
 - 按所选格式查询`/models`、模型搜索、复制模型 ID；Anthropic 使用`x-api-key`与`anthropic-version`请求头。
