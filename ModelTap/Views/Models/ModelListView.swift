@@ -15,11 +15,13 @@ struct ModelListView: View {
             switch viewModel.loadState {
             case .idle:
                 ContentUnavailableView("尚未查询模型", systemImage: "list.bullet.rectangle", description: Text("点击“查询模型”获取服务端模型列表。"))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .loading:
                 ProgressView("正在查询模型…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .failed(let message):
                 ContentUnavailableView("查询失败", systemImage: "exclamationmark.triangle", description: Text(message))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .loaded:
                 if viewModel.filteredModels.isEmpty { ContentUnavailableView("没有匹配的模型", systemImage: "magnifyingglass") }
                 else {
@@ -37,7 +39,7 @@ struct ModelListView: View {
                 }
             }
         }
-        .frame(maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: viewModel.modelSearchText) { _, _ in }
     }
 }

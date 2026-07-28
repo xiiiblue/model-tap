@@ -30,7 +30,15 @@ struct TestDetailView: View {
                     .padding()
                 }
             } else {
-                ContentUnavailableView("暂无测试详情", systemImage: "checkmark.bubble", description: Text("测试模型后将在这里显示响应和错误信息。"))
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("暂无测试详情", systemImage: "checkmark.bubble")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    Text("测试模型后将在这里显示响应和错误信息。")
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding()
             }
         }
         .frame(minWidth: 270, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
