@@ -18,7 +18,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTapTests -configuration Debu
 - 配置名称、Base URL、备注、时间和测试记录保存在 SwiftData 本地存储。
 - API Key 只保存于 macOS Keychain；SwiftData 仅保存随机 Keychain 引用标识。
 - 应用不会上传遥测、同步数据或请求无关权限。
-- 日志和错误展示不输出 Authorization 请求头；配置编辑器默认明文显示密钥，用户可手动切换隐藏。
+- 日志和错误展示不输出 Authorization 请求头；配置编辑器默认隐藏密钥，用户可手动切换明文显示。
 - 示例数据使用虚构地址和密钥，不包含真实凭据。
 
 ## 已实现

@@ -3,7 +3,7 @@ import AppKit
 
 struct ProfileEditorView: View {
     @Binding var editor: ProfileEditorState?
-    @State private var isKeyVisible = true
+    @State private var isKeyVisible = false
     let onSave: () -> Void
 
     var body: some View {
@@ -29,10 +29,8 @@ struct ProfileEditorView: View {
                         }
                     }
                     fieldRow("备注（可选）") {
-                        TextField("", text: binding(\.notes), axis: .vertical)
-                            .textFieldStyle(.plain)
-                            .lineLimit(2...4)
-                            .multilineTextAlignment(.leading)
+                        LeadingAlignedTextEditor(text: binding(\.notes))
+                            .frame(minHeight: 28, maxHeight: 72)
                     }
                 }
                 Section {
@@ -109,6 +107,49 @@ private struct LeadingAlignedTextField: NSViewRepresentable {
         func controlTextDidChange(_ notification: Notification) {
             guard let textField = notification.object as? NSTextField else { return }
             parent.text = textField.stringValue
+        }
+    }
+}
+
+private struct LeadingAlignedTextEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSTextView {
+        let textView = NSTextView()
+        textView.alignment = .left
+        textView.isRichText = false
+        textView.isEditable = true
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.focusRingType = .none
+        textView.textContainerInset = NSSize(width: 0, height: 4)
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.delegate = context.coordinator
+        return textView
+    }
+
+    func updateNSView(_ nsView: NSTextView, context: Context) {
+        if nsView.string != text {
+            nsView.string = text
+        }
+        nsView.alignment = .left
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        private var parent: LeadingAlignedTextEditor
+
+        init(_ parent: LeadingAlignedTextEditor) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.text = textView.string
         }
     }
 }
