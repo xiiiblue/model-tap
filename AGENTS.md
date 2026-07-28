@@ -39,7 +39,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Debug -sd
 xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Release -sdk macosx ARCHS="arm64 x86_64" ONLY_ACTIVE_ARCH=NO build
 ```
 
-- DMG应使用Release产物中的`ModelTap.app`制作，发布前确认应用包含`arm64`和`x86_64`架构，并通过GitHubRelease上传DMG文件。
+- DMG应使用Release产物中的`ModelTap.app`制作，镜像根目录必须同时包含应用和指向`/Applications`的`Applications`快捷入口，确保用户可以拖动安装；发布前确认应用包含`arm64`和`x86_64`架构，并通过GitHubRelease上传DMG文件。
 
 ## 安全要求
 
