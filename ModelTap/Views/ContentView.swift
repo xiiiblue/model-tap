@@ -51,13 +51,13 @@ struct ContentView: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button(
-                        "导入全量备份",
+                        "导入配置备份",
                         systemImage: "square.and.arrow.down"
                     ) {
                         isImporterPresented = true
                     }
                     Button(
-                        "导出全量备份",
+                        "导出配置备份",
                         systemImage: "square.and.arrow.up"
                     ) {
                         isExportConfirmationPresented = true
@@ -65,13 +65,13 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "arrow.up.arrow.down.circle")
                 }
-                .help("导入或导出Markdown全量备份")
+                .help("导入或导出Markdown配置备份")
             }
         }
         .sheet(item: $viewModel.editor) { _ in ProfileEditorView(editor: $viewModel.editor, onSave: viewModel.saveEditor) }
         .alert(item: $viewModel.notice) { notice in Alert(title: Text(notice.message)) }
         .confirmationDialog(
-            "导出全量备份？",
+            "导出配置备份？",
             isPresented: $isExportConfirmationPresented,
             titleVisibility: .visible
         ) {
@@ -99,7 +99,7 @@ struct ContentView: View {
             onCompletion: handleImportSelection
         )
         .confirmationDialog(
-            "导入全量备份？",
+            "导入配置备份？",
             isPresented: pendingImportBinding,
             titleVisibility: .visible
         ) {
@@ -114,7 +114,7 @@ struct ContentView: View {
         } message: {
             if let backup = pendingImport {
                 Text(
-                    "将删除当前全部数据，并导入\(backup.folders.count)个文件夹、\(backup.profiles.count)项配置和\(backup.testRecords.count)条测试记录。"
+                    "将清空当前配置和测试记录，并导入\(backup.folders.count)个文件夹和\(backup.profiles.count)项配置。"
                 )
             }
         }

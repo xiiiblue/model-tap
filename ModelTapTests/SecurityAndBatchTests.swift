@@ -120,12 +120,15 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertTrue(markdown.contains("API格式: OpenAI Responses"))
         XCTAssertTrue(markdown.contains("> 第一行\n> 第二行"))
         XCTAssertFalse(markdown.contains("- `profile`"))
+        XCTAssertFalse(markdown.contains("modeltap-folder-meta"))
+        XCTAssertFalse(markdown.contains("modeltap-profile-meta"))
+        XCTAssertFalse(markdown.contains("导出时间:"))
+        XCTAssertFalse(markdown.contains("## 测试记录"))
         XCTAssertEqual(decoded.folders.first?.name, "生产环境")
         XCTAssertEqual(decoded.profiles.first?.apiKey, "sk-`特殊字符`")
         XCTAssertEqual(decoded.profiles.first?.notes, "第一行\n第二行")
         XCTAssertEqual(decoded.profiles.first?.apiFormat, "openai-response")
-        XCTAssertEqual(decoded.testRecords.first?.id, recordID)
-        XCTAssertEqual(decoded.exportedAt.timeIntervalSince1970, date.timeIntervalSince1970, accuracy: 0.001)
+        XCTAssertTrue(decoded.testRecords.isEmpty)
     }
 
     func testMarkdownBackupCanImportLegacyVersionOne() throws {

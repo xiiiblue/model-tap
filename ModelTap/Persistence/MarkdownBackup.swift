@@ -113,41 +113,19 @@ enum MarkdownBackupCodec {
     }
 
     static func encode(_ backup: ModelTapBackup) throws -> String {
-        let encoder = makeEncoder()
-        let profileNames = Dictionary(
-            uniqueKeysWithValues: backup.profiles.map { ($0.id, $0.name) }
-        )
-
         var lines = [
             "# ModelTap配置备份",
             "",
             "> 警告：此文件包含明文API Key，请妥善保管，不要提交到公开仓库。",
-            "",
-            "<!-- modeltap-backup-version: \(ModelTapBackup.currentVersion) -->",
-            "",
-            "导出时间: \(dateString(backup.exportedAt))",
-            "",
-            "共\(backup.folders.count)个文件夹、\(backup.profiles.count)项配置、\(backup.testRecords.count)条测试记录。",
             ""
         ]
 
         for folder in backup.folders {
             lines.append("## \(singleLine(folder.name))")
-            lines.append(
-                try metadataLine(
-                    FolderMetadata(
-                        id: folder.id,
-                        createdAt: folder.createdAt,
-                        updatedAt: folder.updatedAt
-                    ),
-                    prefix: folderMetadataPrefix,
-                    encoder: encoder
-                )
-            )
             lines.append("")
 
             for profile in backup.profiles where profile.folderID == folder.id {
-                try append(profile, to: &lines, encoder: encoder)
+                append(profile, to: &lines)
             }
         }
 
@@ -156,32 +134,7 @@ enum MarkdownBackupCodec {
             lines.append("## 未分类")
             lines.append("")
             for profile in uncategorizedProfiles {
-                try append(profile, to: &lines, encoder: encoder)
-            }
-        }
-
-        if !backup.testRecords.isEmpty {
-            lines.append("## 测试记录")
-            lines.append("")
-            for record in backup.testRecords {
-                lines.append("### \(singleLine(record.modelID))")
-                lines.append(
-                    try metadataLine(
-                        TestMetadata(id: record.id, profileID: record.profileID),
-                        prefix: testMetadataPrefix,
-                        encoder: encoder
-                    )
-                )
-                lines.append("配置: \(singleLine(profileNames[record.profileID] ?? "未知配置"))")
-                lines.append("模型: \(singleLine(record.modelID))")
-                lines.append("测试时间: \(dateString(record.testedAt))")
-                lines.append("结果: \(record.success ? "成功" : "失败")")
-                lines.append("状态码: \(record.statusCode.map(String.init) ?? "-")")
-                lines.append("耗时: \(record.duration)秒")
-                lines.append("协议: \(record.protocolName ?? "-")")
-                lines.append("错误:")
-                appendBlockquote(record.errorSummary ?? "", to: &lines)
-                lines.append("")
+                append(profile, to: &lines)
             }
         }
 
@@ -194,17 +147,16 @@ enum MarkdownBackupCodec {
             omittingEmptySubsequences: false
         ).map(String.init)
 
-        guard let formatVersion = parseVersion(in: lines) else {
-            throw MarkdownBackupError.missingVersion
-        }
-
         let backup: ModelTapBackup
-        switch formatVersion {
+        switch parseVersion(in: lines) {
         case 1:
             backup = try decodeLegacyV1(lines)
-        case ModelTapBackup.currentVersion:
+        case ModelTapBackup.currentVersion, .none:
+            guard lines.contains(where: { $0.hasPrefix("BASE_URL: ") }) else {
+                throw MarkdownBackupError.missingVersion
+            }
             backup = try decodeReadableV2(lines)
-        default:
+        case .some(let formatVersion):
             throw MarkdownBackupError.unsupportedVersion(formatVersion)
         }
 
@@ -248,24 +200,9 @@ enum MarkdownBackupCodec {
 
     private static func append(
         _ profile: ModelTapBackup.Profile,
-        to lines: inout [String],
-        encoder: JSONEncoder
-    ) throws {
+        to lines: inout [String]
+    ) {
         lines.append("### \(singleLine(profile.name))")
-        lines.append(
-            try metadataLine(
-                ProfileMetadata(
-                    id: profile.id,
-                    folderID: profile.folderID,
-                    createdAt: profile.createdAt,
-                    updatedAt: profile.updatedAt,
-                    lastUsedAt: profile.lastUsedAt,
-                    lastTestStatus: profile.lastTestStatus
-                ),
-                prefix: profileMetadataPrefix,
-                encoder: encoder
-            )
-        )
         lines.append("BASE_URL: [\(profile.baseURL)](\(profile.baseURL))")
         lines.append("API_KEY: \(profile.apiKey)")
         lines.append(
@@ -293,6 +230,8 @@ enum MarkdownBackupCodec {
         var profiles: [ModelTapBackup.Profile] = []
         var testRecords: [ModelTapBackup.TestRecord] = []
         var currentFolderName: String?
+        var currentFolderID: UUID?
+        var currentFolderWasGenerated = false
         var inTestRecords = false
         var index = 0
 
@@ -306,9 +245,26 @@ enum MarkdownBackupCodec {
             } else if line == "## 测试记录" {
                 inTestRecords = true
                 currentFolderName = nil
+                currentFolderID = nil
+                currentFolderWasGenerated = false
             } else if line.hasPrefix("## ") {
                 inTestRecords = false
                 currentFolderName = String(line.dropFirst(3))
+                currentFolderWasGenerated = currentFolderName != "未分类"
+                if currentFolderWasGenerated, let currentFolderName {
+                    let folderID = UUID()
+                    currentFolderID = folderID
+                    folders.append(
+                        .init(
+                            id: folderID,
+                            name: currentFolderName,
+                            createdAt: .now,
+                            updatedAt: .now
+                        )
+                    )
+                } else {
+                    currentFolderID = nil
+                }
             } else if line.hasPrefix(folderMetadataPrefix) {
                 guard let folderName = currentFolderName else {
                     throw MarkdownBackupError.invalidRecord(line: index + 1)
@@ -319,6 +275,9 @@ enum MarkdownBackupCodec {
                     lineNumber: index + 1,
                     decoder: decoder
                 )
+                if currentFolderWasGenerated {
+                    folders.removeLast()
+                }
                 folders.append(
                     .init(
                         id: metadata.id,
@@ -327,6 +286,8 @@ enum MarkdownBackupCodec {
                         updatedAt: metadata.updatedAt
                     )
                 )
+                currentFolderID = metadata.id
+                currentFolderWasGenerated = false
             } else if line.hasPrefix("### ") {
                 if inTestRecords {
                     let result = try decodeTestRecord(
@@ -341,7 +302,8 @@ enum MarkdownBackupCodec {
                     let result = try decodeProfile(
                         lines,
                         startIndex: index,
-                        decoder: decoder
+                        decoder: decoder,
+                        folderID: currentFolderID
                     )
                     profiles.append(result.value)
                     index = result.nextIndex
@@ -364,7 +326,8 @@ enum MarkdownBackupCodec {
     private static func decodeProfile(
         _ lines: [String],
         startIndex: Int,
-        decoder: JSONDecoder
+        decoder: JSONDecoder,
+        folderID: UUID?
     ) throws -> (value: ModelTapBackup.Profile, nextIndex: Int) {
         let name = String(lines[startIndex].dropFirst(4))
         var metadata: ProfileMetadata?
@@ -404,23 +367,24 @@ enum MarkdownBackupCodec {
             index += 1
         }
 
-        guard let metadata, let baseURL, let apiKey, let apiFormat else {
+        guard let baseURL, let apiKey, let apiFormat else {
             throw MarkdownBackupError.invalidRecord(line: startIndex + 1)
         }
+        let now = Date.now
 
         return (
             .init(
-                id: metadata.id,
+                id: metadata?.id ?? UUID(),
                 name: name,
                 baseURL: baseURL,
                 apiKey: apiKey,
                 apiFormat: apiFormat,
-                folderID: metadata.folderID,
+                folderID: metadata?.folderID ?? folderID,
                 notes: notes,
-                createdAt: metadata.createdAt,
-                updatedAt: metadata.updatedAt,
-                lastUsedAt: metadata.lastUsedAt,
-                lastTestStatus: metadata.lastTestStatus
+                createdAt: metadata?.createdAt ?? now,
+                updatedAt: metadata?.updatedAt ?? now,
+                lastUsedAt: metadata?.lastUsedAt,
+                lastTestStatus: metadata?.lastTestStatus ?? ProfileTestStatus.notTested.rawValue
             ),
             index
         )
@@ -589,12 +553,6 @@ enum MarkdownBackupCodec {
         value.replacingOccurrences(of: "\n", with: " ")
     }
 
-    private static func dateString(_ date: Date) -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter.string(from: date)
-    }
-
     private static func parseDate(_ value: String) -> Date? {
         let fractionalFormatter = ISO8601DateFormatter()
         fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -604,25 +562,10 @@ enum MarkdownBackupCodec {
         return ISO8601DateFormatter().date(from: value)
     }
 
-    private static func makeEncoder() -> JSONEncoder {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
-        return encoder
-    }
-
     private static func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
-    }
-
-    private static func metadataLine<T: Encodable>(
-        _ metadata: T,
-        prefix: String,
-        encoder: JSONEncoder
-    ) throws -> String {
-        "\(prefix) \(try json(metadata, encoder: encoder)) -->"
     }
 
     private static func decodeMetadata<T: Decodable>(
@@ -641,13 +584,6 @@ enum MarkdownBackupCodec {
             line: lineNumber,
             decoder: decoder
         )
-    }
-
-    private static func json<T: Encodable>(
-        _ value: T,
-        encoder: JSONEncoder
-    ) throws -> String {
-        String(decoding: try encoder.encode(value), as: UTF8.self)
     }
 
     private static func decodeRecord<T: Decodable>(
