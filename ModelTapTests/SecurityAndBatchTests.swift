@@ -109,11 +109,47 @@ final class SecurityAndBatchTests: XCTestCase {
         let decoded = try MarkdownBackupCodec.decode(markdown)
 
         XCTAssertTrue(markdown.contains("明文API Key"))
+        XCTAssertTrue(markdown.contains("## 生产环境"))
+        XCTAssertTrue(markdown.contains("### 主配置"))
+        XCTAssertTrue(
+            markdown.contains(
+                "BASE_URL: [https://example.test/v1](https://example.test/v1)"
+            )
+        )
+        XCTAssertTrue(markdown.contains("API_KEY: sk-`特殊字符`"))
+        XCTAssertTrue(markdown.contains("API格式: OpenAI Responses"))
+        XCTAssertTrue(markdown.contains("> 第一行\n> 第二行"))
+        XCTAssertFalse(markdown.contains("- `profile`"))
         XCTAssertEqual(decoded.folders.first?.name, "生产环境")
         XCTAssertEqual(decoded.profiles.first?.apiKey, "sk-`特殊字符`")
         XCTAssertEqual(decoded.profiles.first?.notes, "第一行\n第二行")
         XCTAssertEqual(decoded.profiles.first?.apiFormat, "openai-response")
         XCTAssertEqual(decoded.testRecords.first?.id, recordID)
+        XCTAssertEqual(decoded.exportedAt.timeIntervalSince1970, date.timeIntervalSince1970, accuracy: 0.001)
+    }
+
+    func testMarkdownBackupCanImportLegacyVersionOne() throws {
+        let folder = ModelTapBackup.Folder(
+            id: UUID(),
+            name: "旧备份",
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+            updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let folderJSON = String(decoding: try encoder.encode(folder), as: UTF8.self)
+        let markdown = """
+        # ModelTap全量备份
+        <!-- modeltap-backup-version: 1 -->
+        ## 文件夹
+        - `folder` \(folderJSON)
+        """
+
+        let decoded = try MarkdownBackupCodec.decode(markdown)
+
+        XCTAssertEqual(decoded.formatVersion, 1)
+        XCTAssertEqual(decoded.folders.first?.id, folder.id)
     }
 
     @MainActor func testBatchContinuesAfterOneFailure() async {
