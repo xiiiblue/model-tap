@@ -10,81 +10,90 @@ struct ProfileEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("基本信息") {
-                    fieldRow("配置名称") {
-                        LeadingAlignedTextField(text: binding(\.name, defaultValue: ""))
-                    }
-                    fieldRow("文件夹") {
-                        Picker("", selection: binding(\.folderID, defaultValue: nil)) {
-                            Text("未分类").tag(Optional<UUID>.none)
-                            ForEach(folders) { folder in
-                                Text(folder.name).tag(Optional(folder.id))
-                            }
+            VStack(alignment: .leading, spacing: 18) {
+                editorSection("基本信息") {
+                    VStack(spacing: 0) {
+                        fieldRow("配置名称") {
+                            LeadingAlignedTextField(text: binding(\.name, defaultValue: ""))
                         }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
+                        Divider()
+                        fieldRow("文件夹") {
+                            Picker("", selection: binding(\.folderID, defaultValue: nil)) {
+                                Text("未分类").tag(Optional<UUID>.none)
+                                ForEach(folders) { folder in
+                                    Text(folder.name).tag(Optional(folder.id))
+                                }
+                            }
+                            .labelsHidden()
+                            .pickerStyle(.menu)
+                        }
                     }
                 }
 
-                Section("接口配置") {
-                    fieldRow("Base URL") {
-                        LeadingAlignedTextField(text: binding(\.baseURL, defaultValue: ""))
-                    }
-                    fieldRow("API格式") {
-                        Menu {
-                            ForEach(APIFormat.allCases, id: \.self) { format in
-                                Button {
-                                    editor?.apiFormat = format
-                                } label: {
-                                    HStack {
-                                        Text(format.title)
-                                        if editor?.apiFormat == format {
-                                            Spacer()
-                                            Image(systemName: "checkmark")
+                editorSection("接口配置") {
+                    VStack(spacing: 0) {
+                        fieldRow("Base URL") {
+                            LeadingAlignedTextField(text: binding(\.baseURL, defaultValue: ""))
+                        }
+                        Divider()
+                        fieldRow("API格式") {
+                            Menu {
+                                ForEach(APIFormat.allCases, id: \.self) { format in
+                                    Button {
+                                        editor?.apiFormat = format
+                                    } label: {
+                                        HStack {
+                                            Text(format.title)
+                                            if editor?.apiFormat == format {
+                                                Spacer()
+                                                Image(systemName: "checkmark")
+                                            }
                                         }
                                     }
                                 }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Text(editor?.apiFormat.title ?? APIFormat.openAI.title)
+                                    Spacer(minLength: 0)
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .foregroundStyle(.secondary)
+                                }
                             }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text(editor?.apiFormat.title ?? APIFormat.openAI.title)
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .foregroundStyle(.secondary)
-                            }
+                            .menuStyle(.borderlessButton)
+                            .accessibilityLabel("API格式")
                         }
-                        .menuStyle(.borderlessButton)
-                        .accessibilityLabel("API格式")
-                    }
-                    fieldRow("API Key（可选）") {
-                        HStack {
-                            if isKeyVisible {
-                                LeadingAlignedTextField(text: binding(\.apiKey, defaultValue: ""))
-                            } else {
-                                LeadingAlignedTextField(text: binding(\.apiKey, defaultValue: ""), isSecure: true)
+                        Divider()
+                        fieldRow("API Key（可选）") {
+                            HStack {
+                                if isKeyVisible {
+                                    LeadingAlignedTextField(text: binding(\.apiKey, defaultValue: ""))
+                                } else {
+                                    LeadingAlignedTextField(text: binding(\.apiKey, defaultValue: ""), isSecure: true)
+                                }
+                                Button { isKeyVisible.toggle() } label: { Image(systemName: isKeyVisible ? "eye.slash" : "eye") }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel(isKeyVisible ? "隐藏 API Key" : "显示 API Key")
                             }
-                            Button { isKeyVisible.toggle() } label: { Image(systemName: isKeyVisible ? "eye.slash" : "eye") }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel(isKeyVisible ? "隐藏 API Key" : "显示 API Key")
                         }
                     }
                 }
 
-                Section("备注（可选）") {
+                editorSection("备注（可选）") {
                     LeadingAlignedTextEditor(text: binding(\.notes, defaultValue: ""))
-                        .frame(minHeight: 110, idealHeight: 130, maxHeight: 180)
+                        .frame(height: 110)
                 }
+
+                Spacer(minLength: 0)
             }
-            .formStyle(.grouped)
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 18)
             .navigationTitle(editor?.profile == nil ? "新增配置" : "编辑配置")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { editor = nil } }
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: onSave).keyboardShortcut(.defaultAction) }
             }
         }
-        .frame(minWidth: 520, idealWidth: 560, minHeight: 480, idealHeight: 520)
+        .frame(minWidth: 520, idealWidth: 560, minHeight: 600, idealHeight: 620)
     }
 
     private func binding<T>(
@@ -95,6 +104,26 @@ struct ProfileEditorView: View {
             get: { editor?[keyPath: keyPath] ?? defaultValue },
             set: { editor?[keyPath: keyPath] = $0 }
         )
+    }
+
+    @ViewBuilder
+    private func editorSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.headline)
+            content()
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.primary.opacity(0.045))
+                }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
