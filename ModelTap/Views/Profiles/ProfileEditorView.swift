@@ -83,7 +83,7 @@ struct ProfileEditorView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: onSave).keyboardShortcut(.defaultAction) }
             }
         }
-        .frame(minWidth: 520, idealWidth: 560, minHeight: 700, idealHeight: 720)
+        .frame(minWidth: 520, idealWidth: 560, minHeight: 600, idealHeight: 620)
     }
 
     private func binding<T>(
