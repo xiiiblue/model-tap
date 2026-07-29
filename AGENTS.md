@@ -58,6 +58,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Release -
 
 - 保持现有SwiftUI、SwiftData和目录分层；业务逻辑优先放在对应的模型、服务或仓储中，不在视图内堆积网络和持久化代码。
 - macOS`Form`会将`TextField`的标题参数渲染为左侧标签并把控件放到右侧，且SwiftUI输入框在该环境下可能继续继承右对齐；配置编辑器使用自定义`fieldRow`和AppKit`LeadingAlignedTextField`明确设置左对齐。原生输入控件必须保持无边框、透明背景且不显示焦点框，不要直接恢复为`TextField("标题", text: ...)`的表单行写法。
+- 配置编辑器的`editor`在保存或取消时会先置为`nil`，macOS关闭Sheet期间仍可能重新求值输入控件；所有字段绑定必须提供`nil`安全的默认值，禁止对`editor`强制解包，否则保存时会因Sheet退场重绘而闪退。
 - 测试详情面板使用固定高度的顶部对齐`ScrollView`承载内容；不要让超出固定高度的详情`VStack`按默认居中方式溢出，否则状态标题会压到列表与详情之间的分隔线。
 - 测试详情只显示结果状态、状态码、接口协议、耗时、Token用量和失败错误，不显示测试时间或模型输出，避免成功详情信息冗余。
 - 模型列表的初始、加载失败和加载中状态必须填满列表区剩余空间，而列表标题保持顶部对齐；空测试详情使用顶部对齐的提示，避免在高窗口中出现标题和空状态整体下沉。

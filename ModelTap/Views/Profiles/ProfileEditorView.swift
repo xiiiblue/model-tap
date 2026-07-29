@@ -13,10 +13,10 @@ struct ProfileEditorView: View {
             Form {
                 Section("接口配置") {
                     fieldRow("配置名称") {
-                        LeadingAlignedTextField(text: binding(\.name))
+                        LeadingAlignedTextField(text: binding(\.name, defaultValue: ""))
                     }
                     fieldRow("文件夹") {
-                        Picker("", selection: binding(\.folderID)) {
+                        Picker("", selection: binding(\.folderID, defaultValue: nil)) {
                             Text("未分类").tag(Optional<UUID>.none)
                             ForEach(folders) { folder in
                                 Text(folder.name).tag(Optional(folder.id))
@@ -26,7 +26,7 @@ struct ProfileEditorView: View {
                         .pickerStyle(.menu)
                     }
                     fieldRow("Base URL") {
-                        LeadingAlignedTextField(text: binding(\.baseURL))
+                        LeadingAlignedTextField(text: binding(\.baseURL, defaultValue: ""))
                     }
                     fieldRow("API格式") {
                         Menu {
@@ -57,9 +57,9 @@ struct ProfileEditorView: View {
                     fieldRow("API Key（可选）") {
                         HStack {
                             if isKeyVisible {
-                                LeadingAlignedTextField(text: binding(\.apiKey))
+                                LeadingAlignedTextField(text: binding(\.apiKey, defaultValue: ""))
                             } else {
-                                LeadingAlignedTextField(text: binding(\.apiKey), isSecure: true)
+                                LeadingAlignedTextField(text: binding(\.apiKey, defaultValue: ""), isSecure: true)
                             }
                             Button { isKeyVisible.toggle() } label: { Image(systemName: isKeyVisible ? "eye.slash" : "eye") }
                                 .buttonStyle(.borderless)
@@ -67,7 +67,7 @@ struct ProfileEditorView: View {
                         }
                     }
                     fieldRow("备注（可选）") {
-                        LeadingAlignedTextEditor(text: binding(\.notes))
+                        LeadingAlignedTextEditor(text: binding(\.notes, defaultValue: ""))
                             .frame(minHeight: 28, maxHeight: 72)
                     }
                 }
@@ -87,8 +87,14 @@ struct ProfileEditorView: View {
         .frame(minWidth: 450, minHeight: 350)
     }
 
-    private func binding<T>(_ keyPath: WritableKeyPath<ProfileEditorState, T>) -> Binding<T> {
-        Binding(get: { editor![keyPath: keyPath] }, set: { editor![keyPath: keyPath] = $0 })
+    private func binding<T>(
+        _ keyPath: WritableKeyPath<ProfileEditorState, T>,
+        defaultValue: T
+    ) -> Binding<T> {
+        Binding(
+            get: { editor?[keyPath: keyPath] ?? defaultValue },
+            set: { editor?[keyPath: keyPath] = $0 }
+        )
     }
 
     @ViewBuilder
