@@ -40,6 +40,6 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTapTests -configuration Debu
 
 ## 全量导入导出
 
-窗口右侧工具栏的导入导出菜单支持Markdown配置备份。备份按文件夹使用二级标题分组，配置使用三级标题展示，并以可点击链接显示Base URL；API格式、API Key和多行备注均为适合直接放入Obsidian阅读的普通Markdown。备份不包含内部ID、时间戳、使用状态或测试历史，重新导入时会生成新的本地记录。导入前会校验文件并显示数据数量，确认后完整替换当前配置；旧版单行JSON格式和上一版带元数据的Markdown仍可导入。
+窗口右侧工具栏的导入导出菜单支持Markdown配置备份。备份按文件夹使用二级标题分组，配置使用三级标题展示，Base URL使用普通文本；API格式、API Key和多行备注均适合直接放入Obsidian阅读。备份不包含内部ID、时间戳、使用状态或测试历史，重新导入时会生成新的本地记录。导入前会校验文件并显示数据数量，确认后完整替换当前配置；旧版单行JSON格式和上一版带元数据的Markdown仍可导入。
 
 Markdown备份中的API Key为明文，仅用于用户主动迁移和备份。请妥善保管备份文件，不要提交到公开仓库或发送给不受信任的第三方。

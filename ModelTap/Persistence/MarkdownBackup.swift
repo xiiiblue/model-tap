@@ -203,7 +203,7 @@ enum MarkdownBackupCodec {
         to lines: inout [String]
     ) {
         lines.append("### \(singleLine(profile.name))")
-        lines.append("BASE_URL: [\(profile.baseURL)](\(profile.baseURL))")
+        lines.append("BASE_URL: \(profile.baseURL)")
         lines.append("API_KEY: \(profile.apiKey)")
         lines.append(
             "API格式: \(APIFormat(rawValue: profile.apiFormat)?.title ?? profile.apiFormat)"

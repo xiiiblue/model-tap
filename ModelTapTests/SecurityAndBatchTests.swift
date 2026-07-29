@@ -111,11 +111,8 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertTrue(markdown.contains("明文API Key"))
         XCTAssertTrue(markdown.contains("## 生产环境"))
         XCTAssertTrue(markdown.contains("### 主配置"))
-        XCTAssertTrue(
-            markdown.contains(
-                "BASE_URL: [https://example.test/v1](https://example.test/v1)"
-            )
-        )
+        XCTAssertTrue(markdown.contains("BASE_URL: https://example.test/v1"))
+        XCTAssertFalse(markdown.contains("[https://example.test/v1]"))
         XCTAssertTrue(markdown.contains("API_KEY: sk-`特殊字符`"))
         XCTAssertTrue(markdown.contains("API格式: OpenAI Responses"))
         XCTAssertTrue(markdown.contains("> 第一行\n> 第二行"))
