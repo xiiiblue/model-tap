@@ -11,7 +11,7 @@ struct ProfileEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("接口配置") {
+                Section("基本信息") {
                     fieldRow("配置名称") {
                         LeadingAlignedTextField(text: binding(\.name, defaultValue: ""))
                     }
@@ -25,6 +25,9 @@ struct ProfileEditorView: View {
                         .labelsHidden()
                         .pickerStyle(.menu)
                     }
+                }
+
+                Section("接口配置") {
                     fieldRow("Base URL") {
                         LeadingAlignedTextField(text: binding(\.baseURL, defaultValue: ""))
                     }
@@ -66,15 +69,11 @@ struct ProfileEditorView: View {
                                 .accessibilityLabel(isKeyVisible ? "隐藏 API Key" : "显示 API Key")
                         }
                     }
-                    fieldRow("备注（可选）") {
-                        LeadingAlignedTextEditor(text: binding(\.notes, defaultValue: ""))
-                            .frame(minHeight: 120, idealHeight: 140, maxHeight: 180)
-                    }
                 }
-                Section {
-                    Label("API Key使用本地AES-GCM加密保存，不使用macOS Keychain。", systemImage: "lock.shield")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+
+                Section("备注（可选）") {
+                    LeadingAlignedTextEditor(text: binding(\.notes, defaultValue: ""))
+                        .frame(minHeight: 110, idealHeight: 130, maxHeight: 180)
                 }
             }
             .formStyle(.grouped)
@@ -84,7 +83,7 @@ struct ProfileEditorView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("保存", action: onSave).keyboardShortcut(.defaultAction) }
             }
         }
-        .frame(minWidth: 450, minHeight: 350)
+        .frame(minWidth: 520, idealWidth: 560, minHeight: 480, idealHeight: 520)
     }
 
     private func binding<T>(
@@ -104,12 +103,13 @@ struct ProfileEditorView: View {
     ) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Text(title)
-                .frame(width: 120, alignment: .leading)
+                .frame(width: 108, alignment: .leading)
                 .padding(.top, 3)
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 3)
     }
 }
 
