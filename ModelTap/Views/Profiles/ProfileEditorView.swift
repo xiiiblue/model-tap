@@ -77,6 +77,7 @@ struct ProfileEditorView: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollIndicators(.hidden)
             .navigationTitle(editor?.profile == nil ? "新增配置" : "编辑配置")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("取消") { editor = nil } }
