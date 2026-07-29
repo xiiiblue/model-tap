@@ -17,8 +17,6 @@ struct ProfileListView: View {
     let onRenameFolder: (ProfileFolder, String) -> Void
     let onDeleteFolder: (ProfileFolder) -> Void
     let onMoveProfile: (APIProfile, ProfileFolder?) -> Void
-    let onImportBackup: () -> Void
-    let onExportBackup: () -> Void
 
     @State private var collapsedFolderIDs: Set<UUID> = []
     @State private var isUnfiledCollapsed = false
@@ -85,23 +83,6 @@ struct ProfileListView: View {
                 Button("新建文件夹", systemImage: "folder.badge.plus") {
                     folderEditor = FolderEditorState(folder: nil, name: "")
                 }
-            }
-            ToolbarItem(placement: .automatic) {
-                Menu {
-                    Button(
-                        "导入全量备份",
-                        systemImage: "square.and.arrow.down",
-                        action: onImportBackup
-                    )
-                    Button(
-                        "导出全量备份",
-                        systemImage: "square.and.arrow.up",
-                        action: onExportBackup
-                    )
-                } label: {
-                    Label("导入/导出", systemImage: "arrow.up.arrow.down")
-                }
-                .help("导入或导出Markdown全量备份")
             }
         }
         .overlay {

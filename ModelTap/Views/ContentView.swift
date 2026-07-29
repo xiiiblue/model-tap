@@ -39,9 +39,7 @@ struct ContentView: View {
                 onCreateFolder: viewModel.createFolder,
                 onRenameFolder: viewModel.renameFolder,
                 onDeleteFolder: viewModel.deleteFolder,
-                onMoveProfile: viewModel.move,
-                onImportBackup: { isImporterPresented = true },
-                onExportBackup: { isExportConfirmationPresented = true }
+                onMoveProfile: viewModel.move
             )
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280)
         } detail: {
@@ -49,6 +47,27 @@ struct ContentView: View {
         }
         .navigationTitle("")
         .frame(minWidth: 900, minHeight: 560)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button(
+                        "导入全量备份",
+                        systemImage: "square.and.arrow.down"
+                    ) {
+                        isImporterPresented = true
+                    }
+                    Button(
+                        "导出全量备份",
+                        systemImage: "square.and.arrow.up"
+                    ) {
+                        isExportConfirmationPresented = true
+                    }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down.circle")
+                }
+                .help("导入或导出Markdown全量备份")
+            }
+        }
         .sheet(item: $viewModel.editor) { _ in ProfileEditorView(editor: $viewModel.editor, onSave: viewModel.saveEditor) }
         .alert(item: $viewModel.notice) { notice in Alert(title: Text(notice.message)) }
         .confirmationDialog(
