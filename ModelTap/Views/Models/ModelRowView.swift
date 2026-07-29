@@ -6,7 +6,6 @@ struct ModelRowView: View {
     let isManual: Bool
     let onCopy: () -> Void
     let onTest: () -> Void
-    let onDeleteManual: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -37,16 +36,6 @@ struct ModelRowView: View {
                 .disabled(isTesting)
         }
         .padding(.vertical, 5)
-        .contextMenu {
-            if let onDeleteManual {
-                Button(
-                    "删除手动模型",
-                    systemImage: "trash",
-                    role: .destructive,
-                    action: onDeleteManual
-                )
-            }
-        }
     }
 
     @ViewBuilder private var statusIcon: some View {

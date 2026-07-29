@@ -117,12 +117,10 @@ struct ModelListView: View {
                         onTest: {
                             viewModel.selectedModelID = model.id
                             viewModel.test(modelID: model.id)
-                        },
-                        onDeleteManual: isManual
-                            ? { viewModel.removeManualModel(id: model.id) }
-                            : nil
+                        }
                     )
                     .padding(.horizontal)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
                         viewModel.selectedModelID == model.id
                             ? Color.accentColor.opacity(0.08)
@@ -132,6 +130,17 @@ struct ModelListView: View {
                     .onTapGesture {
                         viewModel.selectedModelID = model.id
                         viewModel.selectedSummary = model.latestTest
+                    }
+                    .contextMenu {
+                        if isManual {
+                            Button(
+                                "删除手动模型",
+                                systemImage: "trash",
+                                role: .destructive
+                            ) {
+                                viewModel.removeManualModel(id: model.id)
+                            }
+                        }
                     }
                 }
             }
