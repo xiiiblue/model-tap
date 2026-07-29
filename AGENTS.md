@@ -30,7 +30,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Debug -sd
 
 如需避免使用默认DerivedData目录，可增加`-derivedDataPath /tmp/modeltap-deriveddata`。真实接口测试需要本地配置服务地址；Preview和单元测试不得依赖真实API。
 
-日常界面迭代只修改代码并按需构建`.app`交给用户验证，不主动运行XCTest或进行人工功能测试；只有用户明确要求测试时才执行测试。测试构建统一输出为`dist/ModelTap.app`，应用名称不得添加功能名、修复名或其他后缀。先在独立DerivedData或临时产品目录完成构建，再复制覆盖`dist/ModelTap.app`；不要把`CONFIGURATION_BUILD_DIR`直接设为`dist`，Xcode可能清理该目录中的其他发布文件。日常迭代不制作DMG、不创建GitHubRelease；只有用户明确要求发布、打包DMG或上传Release时，才执行完整发布流程。
+日常界面迭代只修改代码并按需构建`.app`交给用户验证，不主动运行XCTest或进行人工功能测试；只有用户明确要求测试时才执行测试。测试构建统一输出为`dist/ModelTap.app`，应用名称不得添加功能名、修复名或其他后缀。日常迭代不制作DMG、不创建GitHubRelease；只有用户明确要求发布、打包DMG或上传Release时，才执行完整发布流程。
 
 ## 图标与发布打包
 
@@ -61,7 +61,6 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Release -
 - 配置编辑器的`editor`在保存或取消时会先置为`nil`，macOS关闭Sheet期间仍可能重新求值输入控件；所有字段绑定必须提供`nil`安全的默认值，禁止对`editor`强制解包，否则保存时会因Sheet退场重绘而闪退。
 - 配置保存成功后直接关闭编辑窗口，不显示成功弹窗；保存失败仍通过错误弹窗反馈。备注使用带垂直滚动条的多行编辑区域，不得退回单行输入框或压缩为单行高度。
 - “关于”窗口只展示产品名称、用途简介、支持的API格式和真实应用版本，不展示“中文名”“开发阶段”或单独的安全说明。
-- 主窗口不显示`ModelTap`导航标题，并使用紧凑型统一工具栏，减少侧边栏工具按钮在右侧形成的顶部空白；不要恢复默认高度的统一工具栏。
 - 测试详情面板使用固定高度的顶部对齐`ScrollView`承载内容；不要让超出固定高度的详情`VStack`按默认居中方式溢出，否则状态标题会压到列表与详情之间的分隔线。
 - 测试详情只显示结果状态、状态码、接口协议、耗时、Token用量和失败错误，不显示测试时间或模型输出，避免成功详情信息冗余。
 - 模型列表的初始、加载失败和加载中状态必须填满列表区剩余空间，而列表标题保持顶部对齐；空测试详情使用顶部对齐的提示，避免在高窗口中出现标题和空状态整体下沉。

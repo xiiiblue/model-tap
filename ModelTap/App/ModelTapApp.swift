@@ -17,7 +17,6 @@ struct ModelTapApp: App {
         WindowGroup {
             ContentView(modelContext: sharedModelContainer.mainContext)
         }
-        .windowToolbarStyle(.unifiedCompact)
         .modelContainer(sharedModelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {
