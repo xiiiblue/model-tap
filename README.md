@@ -2,6 +2,8 @@
 
 ModelTap是一款使用SwiftUI和SwiftData编写的macOS原生LLM API管理工具，用于集中保存连接信息、查询模型并验证接口可用性。
 
+![ModelTap主界面](docs/images/modeltap-main.png)
+
 ## 功能
 
 - 使用文件夹组织LLM API配置，并支持拖动排序和跨文件夹移动。
