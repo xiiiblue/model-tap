@@ -129,6 +129,11 @@ private struct LeadingAlignedTextField: NSViewRepresentable {
         textField.drawsBackground = false
         textField.backgroundColor = .clear
         textField.focusRingType = .none
+        textField.maximumNumberOfLines = 1
+        textField.lineBreakMode = .byClipping
+        textField.cell?.usesSingleLineMode = true
+        textField.cell?.wraps = false
+        textField.cell?.isScrollable = true
         textField.delegate = context.coordinator
         textField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         textField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
@@ -140,6 +145,11 @@ private struct LeadingAlignedTextField: NSViewRepresentable {
             nsView.stringValue = text
         }
         nsView.alignment = .left
+        nsView.maximumNumberOfLines = 1
+        nsView.lineBreakMode = .byClipping
+        nsView.cell?.usesSingleLineMode = true
+        nsView.cell?.wraps = false
+        nsView.cell?.isScrollable = true
     }
 
     final class Coordinator: NSObject, NSTextFieldDelegate {

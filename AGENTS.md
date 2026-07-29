@@ -58,6 +58,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Release -
 
 - 保持现有SwiftUI、SwiftData和目录分层；业务逻辑优先放在对应的模型、服务或仓储中，不在视图内堆积网络和持久化代码。
 - macOS`Form`会将`TextField`的标题参数渲染为左侧标签并把控件放到右侧，且SwiftUI输入框在该环境下可能继续继承右对齐；配置编辑器使用自定义`fieldRow`和AppKit`LeadingAlignedTextField`明确设置左对齐。原生输入控件必须保持无边框、透明背景且不显示焦点框，不要直接恢复为`TextField("标题", text: ...)`的表单行写法。
+- `LeadingAlignedTextField`必须保持单行、禁止换行，长内容通过横向滚动编辑，避免API Key等长文本撑高表单行。
 - 配置编辑器按“基本信息”“接口配置”和“备注”分区，备注使用整行多行输入区域；保持原生分组`Form`样式，并通过足够的窗口最小高度完整容纳内容，避免出现外层滚动条；界面不显示API Key加密实现说明，相关安全细节只保留在README和协作文档中。
 - 配置编辑器的`editor`在保存或取消时会先置为`nil`，macOS关闭Sheet期间仍可能重新求值输入控件；所有字段绑定必须提供`nil`安全的默认值，禁止对`editor`强制解包，否则保存时会因Sheet退场重绘而闪退。
 - 配置保存成功后直接关闭编辑窗口，不显示成功弹窗；保存失败仍通过错误弹窗反馈。备注使用带垂直滚动条的多行编辑区域，不得退回单行输入框或压缩为单行高度。
