@@ -4,7 +4,7 @@ import SwiftData
 @main
 struct ModelTapApp: App {
     var sharedModelContainer: ModelContainer = {
-        let schema = Schema([APIProfile.self, ModelTestRecord.self])
+        let schema = Schema([APIProfile.self, ProfileFolder.self, ModelTestRecord.self])
         let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
         do {
             return try ModelContainer(for: schema, configurations: [configuration])

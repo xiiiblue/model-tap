@@ -27,6 +27,7 @@ final class SecurityAndBatchTests: XCTestCase {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
             for: APIProfile.self,
+            ProfileFolder.self,
             ModelTestRecord.self,
             configurations: configuration
         )
@@ -35,20 +36,27 @@ final class SecurityAndBatchTests: XCTestCase {
             modelContext: container.mainContext,
             apiKeyCipher: cipher
         )
+        let folder = try repository.createFolder(name: "开发环境")
         let profile = try repository.saveProfile(
             profile: nil,
             name: "测试配置",
             baseURL: "https://example.test/v1",
             apiKey: "sk-fake",
             apiFormat: .openAI,
-            category: "开发环境",
+            folderID: folder.id,
             notes: ""
         )
 
         XCTAssertEqual(try repository.apiKey(for: profile), "sk-fake")
         XCTAssertEqual(profile.encryptedAPIKey, Data("encrypted:sk-fake".utf8))
         XCTAssertNil(profile.keychainReference)
-        XCTAssertEqual(profile.category, "开发环境")
+        XCTAssertEqual(profile.folderID, folder.id)
+
+        try repository.renameFolder(folder, name: "测试环境")
+        XCTAssertEqual(folder.name, "测试环境")
+
+        try repository.deleteFolder(folder)
+        XCTAssertNil(profile.folderID)
     }
 
     @MainActor func testBatchContinuesAfterOneFailure() async {
@@ -67,6 +75,7 @@ final class SecurityAndBatchTests: XCTestCase {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         let container = try ModelContainer(
             for: APIProfile.self,
+            ProfileFolder.self,
             ModelTestRecord.self,
             configurations: configuration
         )
@@ -81,7 +90,7 @@ final class SecurityAndBatchTests: XCTestCase {
             baseURL: "https://example.test/v1",
             apiKey: "",
             apiFormat: .openAI,
-            category: "",
+            folderID: nil,
             notes: ""
         )
         viewModel.selectedProfile = profile

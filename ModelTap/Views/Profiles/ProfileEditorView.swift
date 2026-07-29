@@ -1,7 +1,9 @@
 import SwiftUI
 import AppKit
+import SwiftData
 
 struct ProfileEditorView: View {
+    @Query(sort: \ProfileFolder.name) private var folders: [ProfileFolder]
     @Binding var editor: ProfileEditorState?
     @State private var isKeyVisible = false
     let onSave: () -> Void
@@ -13,8 +15,15 @@ struct ProfileEditorView: View {
                     fieldRow("配置名称") {
                         LeadingAlignedTextField(text: binding(\.name))
                     }
-                    fieldRow("分类（可选）") {
-                        LeadingAlignedTextField(text: binding(\.category))
+                    fieldRow("文件夹") {
+                        Picker("", selection: binding(\.folderID)) {
+                            Text("未分类").tag(Optional<UUID>.none)
+                            ForEach(folders) { folder in
+                                Text(folder.name).tag(Optional(folder.id))
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
                     }
                     fieldRow("Base URL") {
                         LeadingAlignedTextField(text: binding(\.baseURL))

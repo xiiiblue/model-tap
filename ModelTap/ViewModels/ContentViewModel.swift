@@ -32,6 +32,7 @@ final class ContentViewModel: ObservableObject {
         self.repository = ProfileRepository(modelContext: modelContext, apiKeyCipher: apiKeyCipher)
         self.discovery = ModelDiscoveryService(client: client)
         self.tester = ModelTestService(client: client)
+        try? repository.migrateLegacyCategories()
     }
 
     var filteredModels: [ModelInfo] { modelSearchText.isEmpty ? models : models.filter { $0.id.localizedCaseInsensitiveContains(modelSearchText) } }
@@ -46,7 +47,7 @@ final class ContentViewModel: ObservableObject {
     func saveEditor() {
         guard let editor else { return }
         do {
-            let profile = try repository.saveProfile(profile: editor.profile, name: editor.name, baseURL: editor.baseURL, apiKey: editor.apiKey, apiFormat: editor.apiFormat, category: editor.category, notes: editor.notes)
+            let profile = try repository.saveProfile(profile: editor.profile, name: editor.name, baseURL: editor.baseURL, apiKey: editor.apiKey, apiFormat: editor.apiFormat, folderID: editor.folderID, notes: editor.notes)
             selectedProfile = profile
             self.editor = nil
             notice = RequestNotice(message: "配置已保存")
@@ -60,6 +61,26 @@ final class ContentViewModel: ObservableObject {
 
     func duplicate(_ profile: APIProfile) {
         do { selectedProfile = try repository.duplicate(profile); notice = RequestNotice(message: "配置已复制") }
+        catch { show(error) }
+    }
+
+    func createFolder(name: String) {
+        do { _ = try repository.createFolder(name: name) }
+        catch { show(error) }
+    }
+
+    func renameFolder(_ folder: ProfileFolder, name: String) {
+        do { try repository.renameFolder(folder, name: name) }
+        catch { show(error) }
+    }
+
+    func deleteFolder(_ folder: ProfileFolder) {
+        do { try repository.deleteFolder(folder) }
+        catch { show(error) }
+    }
+
+    func move(_ profile: APIProfile, to folder: ProfileFolder?) {
+        do { try repository.move(profile, to: folder) }
         catch { show(error) }
     }
 
@@ -167,8 +188,8 @@ struct ProfileEditorState: Identifiable {
     var baseURL = ""
     var apiKey = ""
     var apiFormat: APIFormat = .openAI
-    var category = ""
+    var folderID: UUID?
     var notes = ""
     init() {}
-    init(profile: APIProfile, apiKey: String) { self.profile = profile; self.name = profile.name; self.baseURL = profile.baseURL; self.apiKey = apiKey; self.apiFormat = profile.apiFormat; self.category = profile.category ?? ""; self.notes = profile.notes }
+    init(profile: APIProfile, apiKey: String) { self.profile = profile; self.name = profile.name; self.baseURL = profile.baseURL; self.apiKey = apiKey; self.apiFormat = profile.apiFormat; self.folderID = profile.folderID; self.notes = profile.notes }
 }

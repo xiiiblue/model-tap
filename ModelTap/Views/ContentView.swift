@@ -10,7 +10,7 @@ struct ContentView: View {
         } else {
             let container: ModelContainer
             do {
-                container = try ModelContainer(for: APIProfile.self, ModelTestRecord.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+                container = try ModelContainer(for: APIProfile.self, ProfileFolder.self, ModelTestRecord.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
             } catch {
                 fatalError("Preview model container creation failed")
             }
@@ -20,7 +20,21 @@ struct ContentView: View {
 
     var body: some View {
         NavigationSplitView {
-            ProfileListView(selectedProfile: $viewModel.selectedProfile, searchText: $viewModel.searchText, onNew: viewModel.startNewProfile, onEdit: viewModel.edit, onDelete: viewModel.delete, onDuplicate: viewModel.duplicate, onCopyURL: copyURL, onCopyKey: copyKey, onCopyEnvironment: copyEnvironment)
+            ProfileListView(
+                selectedProfile: $viewModel.selectedProfile,
+                searchText: $viewModel.searchText,
+                onNew: viewModel.startNewProfile,
+                onEdit: viewModel.edit,
+                onDelete: viewModel.delete,
+                onDuplicate: viewModel.duplicate,
+                onCopyURL: copyURL,
+                onCopyKey: copyKey,
+                onCopyEnvironment: copyEnvironment,
+                onCreateFolder: viewModel.createFolder,
+                onRenameFolder: viewModel.renameFolder,
+                onDeleteFolder: viewModel.deleteFolder,
+                onMoveProfile: viewModel.move
+            )
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280)
         } detail: {
             detailView
