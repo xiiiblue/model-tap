@@ -43,49 +43,35 @@ struct ProfileListView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            backupActions
-            Divider()
-
-            List(selection: $selectedProfile) {
-                ForEach(visibleFolders) { folder in
-                    DisclosureGroup(isExpanded: expansionBinding(for: folder)) {
-                        ForEach(displayedProfiles(in: folder)) { profile in
-                            profileRow(profile)
-                        }
-                        .onDelete { offsets in
-                            let values = displayedProfiles(in: folder)
-                            offsets.map { values[$0] }.forEach(onDelete)
-                        }
-                    } label: {
-                        folderLabel(folder)
+        List(selection: $selectedProfile) {
+            ForEach(visibleFolders) { folder in
+                DisclosureGroup(isExpanded: expansionBinding(for: folder)) {
+                    ForEach(displayedProfiles(in: folder)) { profile in
+                        profileRow(profile)
                     }
-                }
-
-                if searchText.isEmpty || !unfiledProfiles.isEmpty {
-                    DisclosureGroup(isExpanded: unfiledExpansionBinding) {
-                        ForEach(unfiledProfiles) { profile in
-                            profileRow(profile)
-                        }
-                        .onDelete { offsets in
-                            offsets.map { unfiledProfiles[$0] }.forEach(onDelete)
-                        }
-                    } label: {
-                        Label("未分类", systemImage: "tray")
-                            .font(.headline)
-                            .dropDestination(for: String.self) { values, _ in
-                                moveProfiles(values, to: nil)
-                            }
+                    .onDelete { offsets in
+                        let values = displayedProfiles(in: folder)
+                        offsets.map { values[$0] }.forEach(onDelete)
                     }
+                } label: {
+                    folderLabel(folder)
                 }
             }
-            .overlay {
-                if profiles.isEmpty && folders.isEmpty {
-                    ContentUnavailableView(
-                        "还没有配置",
-                        systemImage: "externaldrive.badge.plus",
-                        description: Text("添加文件夹或LLM API配置开始使用。")
-                    )
+
+            if searchText.isEmpty || !unfiledProfiles.isEmpty {
+                DisclosureGroup(isExpanded: unfiledExpansionBinding) {
+                    ForEach(unfiledProfiles) { profile in
+                        profileRow(profile)
+                    }
+                    .onDelete { offsets in
+                        offsets.map { unfiledProfiles[$0] }.forEach(onDelete)
+                    }
+                } label: {
+                    Label("未分类", systemImage: "tray")
+                        .font(.headline)
+                        .dropDestination(for: String.self) { values, _ in
+                            moveProfiles(values, to: nil)
+                        }
                 }
             }
         }
@@ -99,6 +85,32 @@ struct ProfileListView: View {
                 Button("新建文件夹", systemImage: "folder.badge.plus") {
                     folderEditor = FolderEditorState(folder: nil, name: "")
                 }
+            }
+            ToolbarItem(placement: .automatic) {
+                Menu {
+                    Button(
+                        "导入全量备份",
+                        systemImage: "square.and.arrow.down",
+                        action: onImportBackup
+                    )
+                    Button(
+                        "导出全量备份",
+                        systemImage: "square.and.arrow.up",
+                        action: onExportBackup
+                    )
+                } label: {
+                    Label("导入/导出", systemImage: "arrow.up.arrow.down")
+                }
+                .help("导入或导出Markdown全量备份")
+            }
+        }
+        .overlay {
+            if profiles.isEmpty && folders.isEmpty {
+                ContentUnavailableView(
+                    "还没有配置",
+                    systemImage: "externaldrive.badge.plus",
+                    description: Text("添加文件夹或LLM API配置开始使用。")
+                )
             }
         }
         .sheet(item: $folderEditor) { state in
@@ -136,20 +148,6 @@ struct ProfileListView: View {
         } message: {
             Text("文件夹中的配置将移到“未分类”，不会被删除。")
         }
-    }
-
-    private var backupActions: some View {
-        HStack(spacing: 8) {
-            Button("导入", systemImage: "square.and.arrow.down", action: onImportBackup)
-                .help("导入Markdown全量备份")
-            Button("导出", systemImage: "square.and.arrow.up", action: onExportBackup)
-                .help("导出Markdown全量备份")
-            Spacer(minLength: 0)
-        }
-        .buttonStyle(.borderless)
-        .controlSize(.small)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
     }
 
     private func displayedProfiles(in folder: ProfileFolder) -> [APIProfile] {
