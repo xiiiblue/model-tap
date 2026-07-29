@@ -29,6 +29,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTapTests -configuration Debu
 - 配置级 API 格式选择：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages。
 - Base URL 规范化，并保留用户实际 API 前缀；可直接填写`/models`、`/chat/completions`、`/responses`或`/messages`完整地址。
 - 按所选格式查询`/models`、模型搜索、复制模型 ID；Anthropic 使用`x-api-key`与`anthropic-version`请求头。
+- 不依赖模型查询接口：可按配置手动添加模型ID，并直接添加或添加后立即测试；手动模型会持久化并与查询结果合并。
 - 按所选格式测试模型：OpenAI Chat Completions、OpenAI Responses或Anthropic Messages；不再自动切换协议。
 - 单模型与串行批量测试、取消、进度和结果详情。
 - 最近 100 条测试记录限制。
@@ -40,6 +41,6 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTapTests -configuration Debu
 
 ## 全量导入导出
 
-窗口右侧工具栏的导入导出菜单支持Markdown配置备份。备份按文件夹使用二级标题分组，配置使用三级标题展示，Base URL使用普通文本；API格式、API Key和多行备注均适合直接放入Obsidian阅读。备份不包含内部ID、时间戳、使用状态或测试历史，重新导入时会生成新的本地记录。导入前会校验文件并显示数据数量，确认后完整替换当前配置；旧版单行JSON格式和上一版带元数据的Markdown仍可导入。
+窗口右侧工具栏的导入导出菜单支持Markdown配置备份。备份按文件夹使用二级标题分组，配置使用三级标题展示，Base URL使用普通文本；API格式、API Key、多行备注和手动模型ID均适合直接放入Obsidian阅读。备份不包含内部ID、时间戳、使用状态或测试历史，重新导入时会生成新的本地记录。导入前会校验文件并显示数据数量，确认后完整替换当前配置；旧版单行JSON格式和上一版带元数据的Markdown仍可导入。
 
 Markdown备份中的API Key为明文，仅用于用户主动迁移和备份。请妥善保管备份文件，不要提交到公开仓库或发送给不受信任的第三方。

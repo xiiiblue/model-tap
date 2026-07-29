@@ -24,6 +24,7 @@ struct ModelTapBackup: Sendable {
         let apiFormat: String
         let folderID: UUID?
         let notes: String
+        let manualModelIDs: [String]?
         let createdAt: Date
         let updatedAt: Date
         let lastUsedAt: Date?
@@ -210,6 +211,10 @@ enum MarkdownBackupCodec {
         )
         lines.append("备注:")
         appendBlockquote(profile.notes, to: &lines)
+        if let manualModelIDs = profile.manualModelIDs, !manualModelIDs.isEmpty {
+            lines.append("手动模型:")
+            lines.append(contentsOf: manualModelIDs.map { "- \(singleLine($0))" })
+        }
         lines.append("")
     }
 
@@ -335,6 +340,7 @@ enum MarkdownBackupCodec {
         var apiKey: String?
         var apiFormat: String?
         var notes = ""
+        var manualModelIDs: [String] = []
         var index = startIndex + 1
 
         while index < lines.count,
@@ -363,6 +369,17 @@ enum MarkdownBackupCodec {
                 notes = result.value
                 index = result.nextIndex
                 continue
+            } else if line == "手动模型:" {
+                index += 1
+                while index < lines.count, lines[index].hasPrefix("- ") {
+                    let modelID = String(lines[index].dropFirst(2))
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !modelID.isEmpty {
+                        manualModelIDs.append(modelID)
+                    }
+                    index += 1
+                }
+                continue
             }
             index += 1
         }
@@ -381,6 +398,7 @@ enum MarkdownBackupCodec {
                 apiFormat: apiFormat,
                 folderID: metadata?.folderID ?? folderID,
                 notes: notes,
+                manualModelIDs: manualModelIDs,
                 createdAt: metadata?.createdAt ?? now,
                 updatedAt: metadata?.updatedAt ?? now,
                 lastUsedAt: metadata?.lastUsedAt,

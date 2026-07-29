@@ -52,6 +52,13 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertNil(profile.keychainReference)
         XCTAssertEqual(profile.folderID, folder.id)
 
+        try repository.addManualModel("gpt-manual", to: profile)
+        try repository.addManualModel("gpt-manual", to: profile)
+        XCTAssertEqual(profile.manualModelIDs, ["gpt-manual"])
+
+        try repository.removeManualModel("gpt-manual", from: profile)
+        XCTAssertTrue(profile.manualModelIDs.isEmpty)
+
         try repository.renameFolder(folder, name: "测试环境")
         XCTAssertEqual(folder.name, "测试环境")
 
@@ -84,6 +91,7 @@ final class SecurityAndBatchTests: XCTestCase {
                     apiFormat: APIFormat.openAIResponses.rawValue,
                     folderID: folderID,
                     notes: "第一行\n第二行",
+                    manualModelIDs: ["gpt-manual", "claude-manual"],
                     createdAt: date,
                     updatedAt: date,
                     lastUsedAt: date,
@@ -116,6 +124,7 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertTrue(markdown.contains("API_KEY: sk-`特殊字符`"))
         XCTAssertTrue(markdown.contains("API格式: OpenAI Responses"))
         XCTAssertTrue(markdown.contains("> 第一行\n> 第二行"))
+        XCTAssertTrue(markdown.contains("手动模型:\n- gpt-manual\n- claude-manual"))
         XCTAssertFalse(markdown.contains("- `profile`"))
         XCTAssertFalse(markdown.contains("modeltap-folder-meta"))
         XCTAssertFalse(markdown.contains("modeltap-profile-meta"))
@@ -125,6 +134,10 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertEqual(decoded.profiles.first?.apiKey, "sk-`特殊字符`")
         XCTAssertEqual(decoded.profiles.first?.notes, "第一行\n第二行")
         XCTAssertEqual(decoded.profiles.first?.apiFormat, "openai-response")
+        XCTAssertEqual(
+            decoded.profiles.first?.manualModelIDs,
+            ["gpt-manual", "claude-manual"]
+        )
         XCTAssertTrue(decoded.testRecords.isEmpty)
     }
 

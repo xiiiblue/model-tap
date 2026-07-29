@@ -57,7 +57,23 @@ final class ProfileRepository {
 
     func duplicate(_ profile: APIProfile) throws -> APIProfile {
         let key = try apiKey(for: profile)
-        return try saveProfile(profile: nil, name: "\(profile.name) 副本", baseURL: profile.baseURL, apiKey: key, apiFormat: profile.apiFormat, folderID: profile.folderID, notes: profile.notes)
+        let duplicate = try saveProfile(profile: nil, name: "\(profile.name) 副本", baseURL: profile.baseURL, apiKey: key, apiFormat: profile.apiFormat, folderID: profile.folderID, notes: profile.notes)
+        duplicate.manualModelIDs = profile.manualModelIDs
+        try modelContext.save()
+        return duplicate
+    }
+
+    func addManualModel(_ modelID: String, to profile: APIProfile) throws {
+        guard !profile.manualModelIDs.contains(modelID) else { return }
+        profile.manualModelIDs.append(modelID)
+        profile.updatedAt = .now
+        try modelContext.save()
+    }
+
+    func removeManualModel(_ modelID: String, from profile: APIProfile) throws {
+        profile.manualModelIDs.removeAll { $0 == modelID }
+        profile.updatedAt = .now
+        try modelContext.save()
     }
 
     func createFolder(name: String) throws -> ProfileFolder {
@@ -158,6 +174,7 @@ final class ProfileRepository {
                     apiFormat: $0.apiFormat.rawValue,
                     folderID: $0.folderID,
                     notes: $0.notes,
+                    manualModelIDs: $0.manualModelIDs,
                     createdAt: $0.createdAt,
                     updatedAt: $0.updatedAt,
                     lastUsedAt: $0.lastUsedAt,
@@ -224,6 +241,7 @@ final class ProfileRepository {
             profile.apiFormatRaw = item.apiFormat
             profile.folderID = item.folderID
             profile.notes = item.notes
+            profile.manualModelIDs = item.manualModelIDs ?? []
             profile.createdAt = item.createdAt
             profile.updatedAt = item.updatedAt
             profile.lastUsedAt = item.lastUsedAt

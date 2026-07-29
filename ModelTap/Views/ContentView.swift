@@ -106,7 +106,9 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .modelTapNewProfile)) { _ in viewModel.startNewProfile() }
-        .onChange(of: viewModel.selectedProfile) { _, profile in if profile != nil { viewModel.models = []; viewModel.loadState = .idle } }
+        .onChange(of: viewModel.selectedProfile) { _, _ in
+            viewModel.selectedProfileDidChange()
+        }
     }
 
     @ViewBuilder private var detailView: some View {

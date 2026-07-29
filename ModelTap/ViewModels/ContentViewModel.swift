@@ -16,6 +16,7 @@ final class ContentViewModel: ObservableObject {
     @Published private(set) var testingModelIDs: Set<String> = []
     @Published var lastDiscovery: (count: Int, duration: TimeInterval, date: Date)?
     @Published var editor: ProfileEditorState?
+    @Published private(set) var discoveredModelIDs: Set<String> = []
 
     let modelContext: ModelContext
     let repository: ProfileRepository
@@ -36,6 +37,67 @@ final class ContentViewModel: ObservableObject {
     }
 
     var filteredModels: [ModelInfo] { modelSearchText.isEmpty ? models : models.filter { $0.id.localizedCaseInsensitiveContains(modelSearchText) } }
+
+    func selectedProfileDidChange() {
+        requestTask?.cancel()
+        requestTask = nil
+        discoveredModelIDs.removeAll()
+        selectedModelID = nil
+        selectedSummary = nil
+        lastDiscovery = nil
+        guard let selectedProfile else {
+            models = []
+            loadState = .idle
+            return
+        }
+        models = selectedProfile.manualModelIDs.map {
+            ModelInfo(id: $0, object: nil, latestTest: nil)
+        }
+        loadState = models.isEmpty ? .idle : .loaded
+    }
+
+    func isManualModel(_ modelID: String) -> Bool {
+        selectedProfile?.manualModelIDs.contains(modelID) == true
+    }
+
+    func addManualModel(id rawID: String, testAfterAdding: Bool) {
+        guard let profile = selectedProfile else { return }
+        let modelID = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !modelID.isEmpty else { return }
+        do {
+            try repository.addManualModel(modelID, to: profile)
+            if !models.contains(where: { $0.id == modelID }) {
+                models.append(ModelInfo(id: modelID, object: nil, latestTest: nil))
+            }
+            loadState = .loaded
+            selectedModelID = modelID
+            selectedSummary = models.first(where: { $0.id == modelID })?.latestTest
+            if testAfterAdding {
+                test(modelID: modelID)
+            }
+        } catch {
+            show(error)
+        }
+    }
+
+    func removeManualModel(id modelID: String) {
+        guard let profile = selectedProfile else { return }
+        do {
+            try repository.removeManualModel(modelID, from: profile)
+            if !discoveredModelIDs.contains(modelID) {
+                models.removeAll { $0.id == modelID }
+            }
+            if selectedModelID == modelID {
+                selectedModelID = nil
+                selectedSummary = nil
+            }
+            if models.isEmpty {
+                loadState = .idle
+            }
+        } catch {
+            show(error)
+        }
+    }
 
     func startNewProfile() { editor = ProfileEditorState() }
 
@@ -112,7 +174,20 @@ final class ContentViewModel: ObservableObject {
             do {
                 let key = try repository.apiKey(for: profile)
                 let result = try await discovery.discover(baseURL: profile.baseURL, apiKey: key, format: profile.apiFormat)
-                models = result.models
+                let existingSummaries = Dictionary(
+                    uniqueKeysWithValues: models.compactMap { model in
+                        model.latestTest.map { (model.id, $0) }
+                    }
+                )
+                discoveredModelIDs = Set(result.models.map(\.id))
+                let manualModels = profile.manualModelIDs
+                    .filter { !discoveredModelIDs.contains($0) }
+                    .map { ModelInfo(id: $0, object: nil, latestTest: nil) }
+                models = (result.models + manualModels).map { model in
+                    var model = model
+                    model.latestTest = existingSummaries[model.id]
+                    return model
+                }
                 lastDiscovery = (result.models.count, result.duration, result.testedAt)
                 selectedModelID = models.first?.id
                 profile.lastUsedAt = .now
@@ -132,6 +207,9 @@ final class ContentViewModel: ObservableObject {
     func test(modelID: String) {
         guard let profile = selectedProfile else { return }
         requestTask?.cancel()
+        if loadState == .loading {
+            loadState = models.isEmpty ? .idle : .loaded
+        }
         testingModelIDs = [modelID]
         requestTask = Task { [weak self] in
             guard let self else { return }
@@ -156,6 +234,9 @@ final class ContentViewModel: ObservableObject {
     func testAll() {
         guard let profile = selectedProfile, !filteredModels.isEmpty else { return }
         requestTask?.cancel()
+        if loadState == .loading {
+            loadState = .loaded
+        }
         isBatchTesting = true
         batchProgress = (0, filteredModels.count)
         testingModelIDs.removeAll()

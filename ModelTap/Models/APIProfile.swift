@@ -44,6 +44,7 @@ final class APIProfile {
     var keychainReference: String?
     var apiFormatRaw: String = APIFormat.openAI.rawValue
     var folderID: UUID?
+    var manualModelIDsRaw: String = ""
     // 仅用于将上一版文本分类迁移为文件夹。
     var category: String?
 
@@ -60,6 +61,7 @@ final class APIProfile {
         self.keychainReference = nil
         self.apiFormatRaw = apiFormat.rawValue
         self.folderID = folderID
+        self.manualModelIDsRaw = ""
         self.category = nil
     }
 
@@ -71,5 +73,22 @@ final class APIProfile {
     var apiFormat: APIFormat {
         get { APIFormat(rawValue: apiFormatRaw) ?? .openAI }
         set { apiFormatRaw = newValue.rawValue }
+    }
+
+    var manualModelIDs: [String] {
+        get {
+            let values = manualModelIDsRaw
+                .split(separator: "\n")
+                .map(String.init)
+            var seen: Set<String> = []
+            return values.filter { seen.insert($0).inserted }
+        }
+        set {
+            var seen: Set<String> = []
+            manualModelIDsRaw = newValue
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && seen.insert($0).inserted }
+                .joined(separator: "\n")
+        }
     }
 }

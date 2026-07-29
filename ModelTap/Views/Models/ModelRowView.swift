@@ -3,8 +3,10 @@ import SwiftUI
 struct ModelRowView: View {
     let model: ModelInfo
     let isTesting: Bool
+    let isManual: Bool
     let onCopy: () -> Void
     let onTest: () -> Void
+    let onDeleteManual: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -13,6 +15,14 @@ struct ModelRowView: View {
             Text(model.id)
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(1)
+            if isManual {
+                Text("手动")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.quaternary, in: Capsule())
+            }
             Spacer()
             if let summary = model.latestTest {
                 Text(Formatters.duration(summary.duration)).foregroundStyle(.secondary).frame(width: 75, alignment: .trailing)
@@ -27,6 +37,16 @@ struct ModelRowView: View {
                 .disabled(isTesting)
         }
         .padding(.vertical, 5)
+        .contextMenu {
+            if let onDeleteManual {
+                Button(
+                    "删除手动模型",
+                    systemImage: "trash",
+                    role: .destructive,
+                    action: onDeleteManual
+                )
+            }
+        }
     }
 
     @ViewBuilder private var statusIcon: some View {
