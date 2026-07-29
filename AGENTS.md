@@ -30,7 +30,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Debug -sd
 
 如需避免使用默认DerivedData目录，可增加`-derivedDataPath /tmp/modeltap-deriveddata`。真实接口测试需要本地配置服务地址；Preview和单元测试不得依赖真实API。
 
-日常界面迭代只修改代码并按需构建`.app`交给用户验证，不主动运行XCTest或进行人工功能测试；只有用户明确要求测试时才执行测试。日常迭代不制作DMG、不创建GitHubRelease；只有用户明确要求发布、打包DMG或上传Release时，才执行完整发布流程。
+日常界面迭代只修改代码并按需构建`.app`交给用户验证，不主动运行XCTest或进行人工功能测试；只有用户明确要求测试时才执行测试。测试构建统一输出为`dist/ModelTap.app`，应用名称不得添加功能名、修复名或其他后缀。日常迭代不制作DMG、不创建GitHubRelease；只有用户明确要求发布、打包DMG或上传Release时，才执行完整发布流程。
 
 ## 图标与发布打包
 
