@@ -23,7 +23,7 @@ struct EndpointResolver: Sendable {
         }
         components.path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let path = components.path
-        let suffixes = ["/chat/completions", "/responses", "/messages", "/models"]
+        let suffixes = ["/images/generations", "/chat/completions", "/responses", "/messages", "/models"]
         for suffix in suffixes where path.lowercased().hasSuffix(suffix) {
             components.path = String(path.dropLast(suffix.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             break
@@ -44,5 +44,6 @@ struct EndpointResolver: Sendable {
     var modelsURL: URL { endpoint("models") }
     var chatCompletionsURL: URL { endpoint("chat/completions") }
     var responsesURL: URL { endpoint("responses") }
+    var imageGenerationsURL: URL { endpoint("images/generations") }
     var anthropicMessagesURL: URL { endpoint("messages") }
 }

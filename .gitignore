@@ -7,3 +7,12 @@ xcuserdata/
 .env
 *.key
 *.secret
+dist/*.app/
+dist/*.swiftmodule/
+dist/include/
+dist/*.dSYM/
+dist/*.dmg
+dist/*.zip
+*.xcresult
+audits/
+design-qa.md

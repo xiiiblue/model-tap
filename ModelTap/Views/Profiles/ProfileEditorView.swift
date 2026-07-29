@@ -10,80 +10,198 @@ struct ProfileEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("基本信息") {
-                    fieldRow("配置名称") {
-                        LeadingAlignedTextField(text: binding(\.name, defaultValue: ""))
+            VStack(spacing: 0) {
+                editorContent
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 20)
+                Spacer(minLength: 0)
+            }
+            .navigationTitle(editor?.profile == nil ? "新增配置" : "编辑配置")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    if #available(macOS 26.0, *) {
+                        Button("取消") { editor = nil }
+                            .buttonStyle(.glass)
+                    } else {
+                        Button("取消") { editor = nil }
                     }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if #available(macOS 26.0, *) {
+                        Button("保存", action: onSave)
+                            .buttonStyle(.glassProminent)
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(!canSave)
+                    } else {
+                        Button("保存", action: onSave)
+                            .keyboardShortcut(.defaultAction)
+                            .disabled(!canSave)
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 520, idealWidth: 560, minHeight: 590, idealHeight: 610)
+    }
+
+    @ViewBuilder
+    private var editorContent: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 22) {
+                editorSections
+            }
+        } else {
+            editorSections
+        }
+    }
+
+    private var editorSections: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            editorSection("基本信息") {
+                VStack(spacing: 0) {
+                    fieldRow("配置名称") {
+                        LeadingAlignedTextField(
+                            text: binding(\.name, defaultValue: "")
+                        )
+                        .accessibilityLabel("配置名称")
+                    }
+                    rowDivider
                     fieldRow("文件夹") {
-                        Picker("", selection: binding(\.folderID, defaultValue: nil)) {
-                            Text("未分类").tag(Optional<UUID>.none)
+                        Picker(
+                            "文件夹",
+                            selection: binding(
+                                \.folderID,
+                                defaultValue: Optional<UUID>.none
+                            )
+                        ) {
+                            Text("未分类")
+                                .tag(Optional<UUID>.none)
                             ForEach(folders) { folder in
-                                Text(folder.name).tag(Optional(folder.id))
+                                Text(folder.name)
+                                    .tag(Optional(folder.id))
                             }
                         }
                         .labelsHidden()
                         .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityLabel("文件夹")
                     }
                 }
+            }
 
-                Section("接口配置") {
+            editorSection("接口配置") {
+                VStack(spacing: 0) {
                     fieldRow("Base URL") {
-                        LeadingAlignedTextField(text: binding(\.baseURL, defaultValue: ""))
+                        LeadingAlignedTextField(
+                            text: binding(\.baseURL, defaultValue: "")
+                        )
+                        .accessibilityLabel("Base URL")
                     }
+                    rowDivider
                     fieldRow("API格式") {
-                        Menu {
+                        Picker(
+                            "API格式",
+                            selection: binding(
+                                \.apiFormat,
+                                defaultValue: APIFormat.openAI
+                            )
+                        ) {
                             ForEach(APIFormat.allCases, id: \.self) { format in
-                                Button {
-                                    editor?.apiFormat = format
-                                } label: {
-                                    HStack {
-                                        Text(format.title)
-                                        if editor?.apiFormat == format {
-                                            Spacer()
-                                            Image(systemName: "checkmark")
-                                        }
-                                    }
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Text(editor?.apiFormat.title ?? APIFormat.openAI.title)
-                                Spacer(minLength: 0)
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .foregroundStyle(.secondary)
+                                Text(format.title)
+                                    .tag(format)
                             }
                         }
-                        .menuStyle(.borderlessButton)
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityLabel("API格式")
                     }
+                    rowDivider
                     fieldRow("API Key（可选）") {
-                        HStack {
+                        HStack(spacing: 8) {
                             if isKeyVisible {
-                                LeadingAlignedTextField(text: binding(\.apiKey, defaultValue: ""))
+                                LeadingAlignedTextField(
+                                    text: binding(\.apiKey, defaultValue: "")
+                                )
                             } else {
-                                LeadingAlignedTextField(text: binding(\.apiKey, defaultValue: ""), isSecure: true)
+                                LeadingAlignedTextField(
+                                    text: binding(\.apiKey, defaultValue: ""),
+                                    isSecure: true
+                                )
                             }
-                            Button { isKeyVisible.toggle() } label: { Image(systemName: isKeyVisible ? "eye.slash" : "eye") }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel(isKeyVisible ? "隐藏 API Key" : "显示 API Key")
+                            Button {
+                                isKeyVisible.toggle()
+                            } label: {
+                                Image(
+                                    systemName: isKeyVisible
+                                        ? "eye.slash"
+                                        : "eye"
+                                )
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(
+                                isKeyVisible
+                                    ? "隐藏API Key"
+                                    : "显示API Key"
+                            )
                         }
+                        .accessibilityElement(children: .contain)
                     }
                 }
-
-                Section("备注（可选）") {
-                    LeadingAlignedTextEditor(text: binding(\.notes, defaultValue: ""))
-                        .frame(minHeight: 110, idealHeight: 130, maxHeight: 180)
-                }
             }
-            .formStyle(.grouped)
-            .navigationTitle(editor?.profile == nil ? "新增配置" : "编辑配置")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("取消") { editor = nil } }
-                ToolbarItem(placement: .confirmationAction) { Button("保存", action: onSave).keyboardShortcut(.defaultAction) }
+
+            editorSection("备注（可选）") {
+                LeadingAlignedTextEditor(
+                    text: binding(\.notes, defaultValue: "")
+                )
+                .frame(height: 138)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .accessibilityLabel("备注")
             }
         }
-        .frame(minWidth: 520, idealWidth: 560, minHeight: 600, idealHeight: 620)
+    }
+
+    private var rowDivider: some View {
+        Divider()
+            .padding(.horizontal, 16)
+    }
+
+    private func editorSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .padding(.leading, 4)
+            editorCard(content: content)
+        }
+    }
+
+    @ViewBuilder
+    private func editorCard<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        if #available(macOS 26.0, *) {
+            content()
+                .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        } else {
+            content()
+                .background(
+                    .regularMaterial,
+                    in: RoundedRectangle(cornerRadius: 16)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(Color.primary.opacity(0.08))
+                }
+        }
+    }
+
+    private var canSave: Bool {
+        guard let editor else { return false }
+        return !editor.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !editor.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func binding<T>(
@@ -109,7 +227,8 @@ struct ProfileEditorView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 16)
+        .frame(minHeight: 52)
     }
 }
 
@@ -182,6 +301,7 @@ private struct LeadingAlignedTextEditor: NSViewRepresentable {
 
         let textView = NSTextView()
         textView.alignment = .left
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
         textView.isRichText = false
         textView.isEditable = true
         textView.isSelectable = true
@@ -209,6 +329,7 @@ private struct LeadingAlignedTextEditor: NSViewRepresentable {
             textView.string = text
         }
         textView.alignment = .left
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {

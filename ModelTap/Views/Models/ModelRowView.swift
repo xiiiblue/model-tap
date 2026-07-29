@@ -25,14 +25,18 @@ struct ModelRowView: View {
             Spacer()
             if let summary = model.latestTest {
                 Text(Formatters.duration(summary.duration)).foregroundStyle(.secondary).frame(width: 75, alignment: .trailing)
-                Text(summary.testedAt.modelTapShort).foregroundStyle(.secondary).frame(width: 145, alignment: .trailing)
+                Text(summary.testedAt.modelTapTimestamp).foregroundStyle(.secondary).frame(width: 160, alignment: .trailing)
             } else {
                 Text("—").foregroundStyle(.tertiary).frame(width: 220, alignment: .trailing)
             }
-            Button("复制", systemImage: "doc.on.doc", action: onCopy).labelStyle(.iconOnly).help("复制模型 ID")
+            Button("复制模型ID", systemImage: "doc.on.doc", action: onCopy)
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("复制模型ID")
             Button("测试", systemImage: "play", action: onTest)
                 .labelStyle(.titleAndIcon)
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderless)
                 .disabled(isTesting)
         }
         .padding(.vertical, 5)

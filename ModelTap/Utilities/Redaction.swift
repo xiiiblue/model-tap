@@ -14,7 +14,12 @@ enum Redaction {
 }
 
 extension Date {
-    var modelTapShort: String {
-        formatted(date: .abbreviated, time: .shortened)
+    var modelTapTimestamp: String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+        return formatter.string(from: self)
     }
 }

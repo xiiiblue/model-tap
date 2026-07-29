@@ -59,8 +59,27 @@ final class LocalAPIKeyCipher: APIKeyEncrypting {
     }
 
     private func loadOrCreateKey() throws -> SymmetricKey {
+        let directory = keyURL.deletingLastPathComponent()
+        do {
+            try fileManager.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700]
+            )
+            try fileManager.setAttributes(
+                [.posixPermissions: 0o700],
+                ofItemAtPath: directory.path
+            )
+        } catch {
+            throw LocalEncryptionError.keyFileUnavailable(error.localizedDescription)
+        }
+
         if fileManager.fileExists(atPath: keyURL.path) {
             do {
+                try fileManager.setAttributes(
+                    [.posixPermissions: 0o600],
+                    ofItemAtPath: keyURL.path
+                )
                 let data = try Data(contentsOf: keyURL)
                 guard data.count == 32 else {
                     throw LocalEncryptionError.keyFileUnavailable("密钥文件格式无效")
@@ -74,12 +93,6 @@ final class LocalAPIKeyCipher: APIKeyEncrypting {
         }
 
         do {
-            let directory = keyURL.deletingLastPathComponent()
-            try fileManager.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true,
-                attributes: [.posixPermissions: 0o700]
-            )
             let key = SymmetricKey(size: .bits256)
             let data = key.withUnsafeBytes { Data($0) }
             try data.write(to: keyURL, options: .atomic)

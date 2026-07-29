@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 构建
+        run: |
+          xcodebuild \
+            -project ModelTap.xcodeproj \
+            -scheme ModelTap \
+            -configuration Debug \
+            -sdk macosx \
+            -derivedDataPath "$RUNNER_TEMP/ModelTapDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: 运行单元测试
+        run: |
+          xcodebuild \
+            -project ModelTap.xcodeproj \
+            -scheme ModelTap \
+            -configuration Debug \
+            -sdk macosx \
+            -derivedDataPath "$RUNNER_TEMP/ModelTapDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            test

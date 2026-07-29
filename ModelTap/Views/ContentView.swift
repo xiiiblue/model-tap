@@ -8,6 +8,11 @@ struct ContentView: View {
     @State private var exportDocument = MarkdownBackupDocument(text: "")
     @State private var isImporterPresented = false
     @State private var pendingImport: ModelTapBackup?
+    @State private var hasSelectedAPIKey = false
+    @State private var selectedAPIKey = ""
+    @State private var isSelectedAPIKeyVisible = false
+    @State private var isManualModelPopoverPresented = false
+    @State private var manualModelID = ""
 
     init(modelContext: ModelContext? = nil) {
         if let modelContext {
@@ -38,15 +43,24 @@ struct ContentView: View {
                 onCreateFolder: viewModel.createFolder,
                 onRenameFolder: viewModel.renameFolder,
                 onDeleteFolder: viewModel.deleteFolder,
-                onMoveProfile: viewModel.move
+                onMoveProfile: viewModel.move,
+                onReorderProfile: viewModel.reorder,
+                onReorderFolder: viewModel.reorder
             )
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280)
         } detail: {
             detailView
         }
-        .navigationTitle("ModelTap")
+        .navigationTitle(viewModel.selectedProfile?.name ?? "ModelTap")
         .frame(minWidth: 900, minHeight: 560)
         .toolbar {
+            if let profile = viewModel.selectedProfile {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("编辑配置", systemImage: "pencil") {
+                        viewModel.edit(profile)
+                    }
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button(
@@ -67,8 +81,25 @@ struct ContentView: View {
                 .help("导入或导出Markdown配置备份")
             }
         }
-        .sheet(item: $viewModel.editor) { _ in ProfileEditorView(editor: $viewModel.editor, onSave: viewModel.saveEditor) }
+        .sheet(item: $viewModel.editor) { _ in
+            ProfileEditorView(
+                editor: $viewModel.editor,
+                onSave: {
+                    viewModel.saveEditor()
+                    loadSelectedAPIKey()
+                }
+            )
+        }
         .alert(item: $viewModel.notice) { notice in Alert(title: Text(notice.message)) }
+        .overlay(alignment: .bottom) {
+            if let toast = viewModel.toast {
+                CopyToast(message: toast.message)
+                    .id(toast.id)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.bottom, 24)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: viewModel.toast)
         .fileExporter(
             isPresented: $isExporterPresented,
             document: exportDocument,
@@ -108,30 +139,229 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .modelTapNewProfile)) { _ in viewModel.startNewProfile() }
         .onChange(of: viewModel.selectedProfile) { _, _ in
             viewModel.selectedProfileDidChange()
+            loadSelectedAPIKey()
         }
+        .task { loadSelectedAPIKey() }
     }
 
     @ViewBuilder private var detailView: some View {
         if let profile = viewModel.selectedProfile {
-            VStack(spacing: 0) {
-                ProfileDetailHeader(profile: profile, viewModel: viewModel)
-                Divider()
-                if viewModel.isBatchTesting, let progress = viewModel.batchProgress {
-                    ProgressView("正在测试模型（\(progress.completed)/\(progress.total)）", value: Double(progress.completed), total: Double(progress.total)).padding()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 22) {
+                    ConnectionOverview(
+                        profile: profile,
+                        hasAPIKey: hasSelectedAPIKey,
+                        apiKey: selectedAPIKey,
+                        isAPIKeyVisible: isSelectedAPIKeyVisible,
+                        onToggleKeyVisibility: {
+                            isSelectedAPIKeyVisible.toggle()
+                        },
+                        onCopyURL: { copyURL(profile) },
+                        onCopyKey: { copyKey(profile) },
+                        onCopyEnvironment: { copyEnvironment(profile) }
+                    )
+
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("模型与测试")
+                            .font(.headline)
+                        modelWorkspace
+                    }
                 }
-                ModelListView(viewModel: viewModel)
-                Divider()
-                TestDetailView(summary: viewModel.selectedSummary)
-                    .frame(height: 190, alignment: .topLeading)
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
         } else {
             ContentUnavailableView("选择一个 API 配置", systemImage: "point.3.connected.trianglepath.dotted", description: Text("从左侧选择配置，或新建一个配置开始。"))
         }
     }
 
-    private func copyURL(_ profile: APIProfile) { Clipboard.copy(profile.baseURL); viewModel.notice = RequestNotice(message: "Base URL 已复制") }
-    private func copyKey(_ profile: APIProfile) { let key = try? viewModel.repository.apiKey(for: profile); Clipboard.copy(key ?? ""); viewModel.notice = RequestNotice(message: "API Key 已复制") }
-    private func copyEnvironment(_ profile: APIProfile) { let key = (try? viewModel.repository.apiKey(for: profile)) ?? ""; Clipboard.copy(environmentExample(for: profile, apiKey: key)); viewModel.notice = RequestNotice(message: "环境变量示例已复制") }
+    private var modelWorkspace: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Label(
+                    viewModel.selectedProfile?.testStatus.title ?? "未测试",
+                    systemImage: testStatusIcon
+                )
+                .foregroundStyle(testStatusColor)
+                Spacer()
+                modelActionButtons
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 10)
+
+            Divider()
+            ModelListView(
+                viewModel: viewModel,
+                onManualInput: presentManualModelPopover
+            )
+            if let summary = viewModel.selectedSummary {
+                Divider()
+                TestDetailView(summary: summary)
+                    .frame(height: 190, alignment: .topLeading)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var modelActionButtons: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 8) {
+                    queryModelsButton
+                        .buttonStyle(.glass)
+                    manualInputButton
+                        .buttonStyle(.glass)
+                }
+            }
+        } else {
+            HStack(spacing: 8) {
+                queryModelsButton
+                manualInputButton
+            }
+        }
+    }
+
+    private var queryModelsButton: some View {
+        Button(
+            "查询模型",
+            systemImage: "arrow.clockwise",
+            action: viewModel.discover
+        )
+        .disabled(
+            viewModel.loadState == .loading
+                || !viewModel.testingModelIDs.isEmpty
+        )
+    }
+
+    private var manualInputButton: some View {
+        Button("手动输入", systemImage: "plus") {
+            presentManualModelPopover()
+        }
+        .popover(
+            isPresented: $isManualModelPopoverPresented,
+            arrowEdge: .top
+        ) {
+            manualModelPopover
+        }
+    }
+
+    private var testStatusIcon: String {
+        switch viewModel.selectedProfile?.testStatus {
+        case .success: "checkmark.circle.fill"
+        case .failure: "xmark.circle.fill"
+        default: "questionmark.circle"
+        }
+    }
+
+    private var testStatusColor: Color {
+        switch viewModel.selectedProfile?.testStatus {
+        case .success: .green
+        case .failure: .red
+        default: .secondary
+        }
+    }
+
+    private var manualModelPopover: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("手动输入模型")
+                .font(.headline)
+            TextField("模型ID", text: $manualModelID)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 320)
+                .onSubmit {
+                    addManualModel(testAfterAdding: false)
+                }
+            HStack {
+                Spacer()
+                Button("添加") {
+                    addManualModel(testAfterAdding: false)
+                }
+                .disabled(normalizedManualModelID.isEmpty)
+                Button("添加并测试") {
+                    addManualModel(testAfterAdding: true)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(normalizedManualModelID.isEmpty)
+            }
+        }
+        .padding(18)
+    }
+
+    private var normalizedManualModelID: String {
+        manualModelID.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func presentManualModelPopover() {
+        manualModelID = ""
+        isManualModelPopoverPresented = true
+    }
+
+    private func addManualModel(testAfterAdding: Bool) {
+        let modelID = normalizedManualModelID
+        guard !modelID.isEmpty else { return }
+        isManualModelPopoverPresented = false
+        viewModel.addManualModel(
+            id: modelID,
+            testAfterAdding: testAfterAdding
+        )
+        manualModelID = ""
+    }
+
+    private func copyURL(_ profile: APIProfile) {
+        Clipboard.copy(profile.baseURL)
+        viewModel.showToast("Base URL已复制")
+    }
+
+    private func copyKey(_ profile: APIProfile) {
+        do {
+            let key = try viewModel.repository.apiKey(for: profile)
+            guard !key.isEmpty else {
+                viewModel.showToast("未设置API Key")
+                return
+            }
+            Clipboard.copy(key, sensitive: true)
+            viewModel.showToast("API Key已复制")
+        } catch {
+            show(error)
+        }
+    }
+
+    private func copyEnvironment(_ profile: APIProfile) {
+        do {
+            let key = try viewModel.repository.apiKey(for: profile)
+            Clipboard.copy(
+                environmentExample(for: profile, apiKey: key),
+                sensitive: !key.isEmpty
+            )
+            viewModel.showToast("环境变量已复制")
+        } catch {
+            show(error)
+        }
+    }
+
+    private func loadSelectedAPIKey() {
+        isSelectedAPIKeyVisible = false
+        guard let profile = viewModel.selectedProfile else {
+            selectedAPIKey = ""
+            hasSelectedAPIKey = false
+            return
+        }
+        do {
+            selectedAPIKey = try viewModel.repository.apiKey(for: profile)
+            hasSelectedAPIKey = !selectedAPIKey.isEmpty
+        } catch {
+            selectedAPIKey = ""
+            hasSelectedAPIKey = false
+            show(error)
+        }
+    }
 
     private var pendingImportBinding: Binding<Bool> {
         Binding(
@@ -203,33 +433,190 @@ private extension UTType {
     }
 }
 
-private struct ProfileDetailHeader: View {
+private struct ConnectionOverview: View {
     let profile: APIProfile
-    @ObservedObject var viewModel: ContentViewModel
+    let hasAPIKey: Bool
+    let apiKey: String
+    let isAPIKeyVisible: Bool
+    let onToggleKeyVisibility: () -> Void
+    let onCopyURL: () -> Void
+    let onCopyKey: () -> Void
+    let onCopyEnvironment: () -> Void
+
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(profile.name).font(.title2.weight(.semibold))
-                Text(profile.baseURL).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
-                Text(profile.apiFormat.title).font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Text("连接信息")
+                    .font(.headline)
+                Text(profile.apiFormat.title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(.quaternary, in: Capsule())
             }
-            Spacer()
-            Label(profile.testStatus.title, systemImage: profile.testStatus == .success ? "checkmark.circle.fill" : profile.testStatus == .failure ? "xmark.circle.fill" : "questionmark.circle").foregroundStyle(profile.testStatus == .success ? .green : profile.testStatus == .failure ? .red : .secondary)
-            Button("编辑", systemImage: "pencil") { viewModel.edit(profile) }
-            Button("查询模型", systemImage: "arrow.clockwise", action: viewModel.discover).disabled(viewModel.loadState == .loading || viewModel.isBatchTesting)
-            Button("测试全部", systemImage: "play.fill", action: viewModel.testAll).disabled(viewModel.models.isEmpty || viewModel.isBatchTesting)
-            if viewModel.isBatchTesting { Button("取消", role: .cancel, action: viewModel.cancel) }
-            Menu { Button("复制 Base URL") { Clipboard.copy(profile.baseURL) }; Button("复制 API Key") { if let key = try? viewModel.repository.apiKey(for: profile) { Clipboard.copy(key) } }; Button("复制环境变量") { let key = (try? viewModel.repository.apiKey(for: profile)) ?? ""; Clipboard.copy(environmentExample(for: profile, apiKey: key)) } } label: { Image(systemName: "ellipsis.circle") }
+
+            connectionCard
         }
-        .padding()
+    }
+
+    @ViewBuilder
+    private var connectionCard: some View {
+        if #available(macOS 26.0, *) {
+            connectionRows
+                .glassEffect(.regular, in: .rect(cornerRadius: 16))
+        } else {
+            connectionRows
+                .background(
+                    .regularMaterial,
+                    in: RoundedRectangle(cornerRadius: 16)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(Color.primary.opacity(0.08))
+                }
+        }
+    }
+
+    private var connectionRows: some View {
+        VStack(spacing: 0) {
+            credentialRow(
+                title: "Base URL",
+                value: profile.baseURL,
+                onCopy: onCopyURL
+            )
+            Divider()
+                .padding(.horizontal, 16)
+            credentialRow(
+                title: "API Key",
+                value: isAPIKeyVisible && hasAPIKey
+                    ? apiKey
+                    : hasAPIKey
+                        ? String(repeating: "•", count: 24)
+                        : "未设置",
+                isSensitive: true,
+                isRevealed: isAPIKeyVisible,
+                onToggleVisibility: onToggleKeyVisibility,
+                onCopy: onCopyKey
+            )
+            Divider()
+                .padding(.horizontal, 16)
+            environmentRow
+            Divider()
+                .padding(.horizontal, 16)
+            notesRow
+        }
+    }
+
+    private func credentialRow(
+        title: String,
+        value: String,
+        isSensitive: Bool = false,
+        isRevealed: Bool = false,
+        onToggleVisibility: (() -> Void)? = nil,
+        onCopy: @escaping () -> Void
+    ) -> some View {
+        HStack(spacing: 16) {
+            Text(title)
+                .font(.body.weight(.medium))
+                .frame(width: 110, alignment: .leading)
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(value == "未设置" ? Color.secondary : Color.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            Spacer(minLength: 12)
+            if isSensitive, let onToggleVisibility {
+                Button(action: onToggleVisibility) {
+                    Image(systemName: isRevealed ? "eye.slash" : "eye")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!hasAPIKey)
+                .help(isRevealed ? "隐藏API Key" : "显示API Key")
+                .accessibilityLabel(isRevealed ? "隐藏API Key" : "显示API Key")
+            }
+            Button("复制", systemImage: "doc.on.doc", action: onCopy)
+                .buttonStyle(.borderless)
+                .disabled(isSensitive && !hasAPIKey)
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 58)
+    }
+
+    private var environmentRow: some View {
+        HStack(spacing: 16) {
+            Text("环境变量")
+                .font(.body.weight(.medium))
+                .frame(width: 110, alignment: .leading)
+            Text("Shell格式，可直接粘贴到终端或应用配置中")
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 12)
+            Button("复制", systemImage: "curlybraces", action: onCopyEnvironment)
+                .buttonStyle(.borderless)
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 58)
+    }
+
+    private var notesRow: some View {
+        let notes = profile.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return HStack(alignment: .top, spacing: 16) {
+            Text("备注")
+                .font(.body.weight(.medium))
+                .frame(width: 110, alignment: .leading)
+            Text(notes.isEmpty ? "未填写" : notes)
+                .foregroundStyle(notes.isEmpty ? Color.secondary : Color.primary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 12)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .frame(minHeight: 58, alignment: .top)
+    }
+}
+
+private struct CopyToast: View {
+    let message: String
+
+    var body: some View {
+        Group {
+            if #available(macOS 26.0, *) {
+                toastLabel
+                    .glassEffect()
+            } else {
+                toastLabel
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay {
+                        Capsule()
+                            .strokeBorder(.primary.opacity(0.08))
+                    }
+            }
+        }
+            .shadow(color: .black.opacity(0.14), radius: 10, y: 4)
+            .allowsHitTesting(false)
+    }
+
+    private var toastLabel: some View {
+        Label(message, systemImage: "checkmark")
+            .font(.callout.weight(.medium))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 9)
     }
 }
 
 private func environmentExample(for profile: APIProfile, apiKey: String) -> String {
     switch profile.apiFormat {
     case .openAI, .openAIResponses:
-        return "export OPENAI_BASE_URL=\"\(profile.baseURL)\"\nexport OPENAI_API_KEY=\"\(apiKey)\""
+        return "export OPENAI_BASE_URL=\(shellQuoted(profile.baseURL))\nexport OPENAI_API_KEY=\(shellQuoted(apiKey))"
     case .anthropic:
-        return "export ANTHROPIC_BASE_URL=\"\(profile.baseURL)\"\nexport ANTHROPIC_API_KEY=\"\(apiKey)\""
+        return "export ANTHROPIC_BASE_URL=\(shellQuoted(profile.baseURL))\nexport ANTHROPIC_API_KEY=\(shellQuoted(apiKey))"
     }
+}
+
+private func shellQuoted(_ value: String) -> String {
+    "'\(value.replacingOccurrences(of: "'", with: "'\"'\"'"))'"
 }

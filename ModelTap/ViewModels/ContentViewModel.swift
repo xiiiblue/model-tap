@@ -6,13 +6,11 @@ final class ContentViewModel: ObservableObject {
     @Published var selectedProfile: APIProfile?
     @Published var models: [ModelInfo] = []
     @Published var searchText = ""
-    @Published var modelSearchText = ""
     @Published var loadState: LoadState = .idle
     @Published var notice: RequestNotice?
+    @Published var toast: RequestNotice?
     @Published var selectedModelID: String?
     @Published var selectedSummary: ModelTestSummary?
-    @Published var isBatchTesting = false
-    @Published var batchProgress: (completed: Int, total: Int)?
     @Published private(set) var testingModelIDs: Set<String> = []
     @Published var lastDiscovery: (count: Int, duration: TimeInterval, date: Date)?
     @Published var editor: ProfileEditorState?
@@ -23,6 +21,8 @@ final class ContentViewModel: ObservableObject {
     private let discovery: ModelDiscoveryService
     private let tester: ModelTestService
     private var requestTask: Task<Void, Never>?
+    private var activeRequestID: UUID?
+    private var toastDismissTask: Task<Void, Never>?
 
     init(
         modelContext: ModelContext,
@@ -33,14 +33,17 @@ final class ContentViewModel: ObservableObject {
         self.repository = ProfileRepository(modelContext: modelContext, apiKeyCipher: apiKeyCipher)
         self.discovery = ModelDiscoveryService(client: client)
         self.tester = ModelTestService(client: client)
-        try? repository.migrateLegacyCategories()
+        do {
+            try repository.migrateLegacyCategories()
+        } catch {
+            notice = RequestNotice(
+                message: "旧分类数据迁移失败：\(Self.friendlyMessage(error))"
+            )
+        }
     }
 
-    var filteredModels: [ModelInfo] { modelSearchText.isEmpty ? models : models.filter { $0.id.localizedCaseInsensitiveContains(modelSearchText) } }
-
     func selectedProfileDidChange() {
-        requestTask?.cancel()
-        requestTask = nil
+        invalidateActiveRequest()
         discoveredModelIDs.removeAll()
         selectedModelID = nil
         selectedSummary = nil
@@ -116,12 +119,18 @@ final class ContentViewModel: ObservableObject {
     }
 
     func delete(_ profile: APIProfile) {
+        if selectedProfile?.id == profile.id {
+            invalidateActiveRequest()
+        }
         do { try repository.delete(profile); if selectedProfile?.id == profile.id { selectedProfile = nil; models = []; loadState = .idle } }
         catch { show(error) }
     }
 
     func duplicate(_ profile: APIProfile) {
-        do { selectedProfile = try repository.duplicate(profile); notice = RequestNotice(message: "配置已复制") }
+        do {
+            selectedProfile = try repository.duplicate(profile)
+            showToast("配置已复制")
+        }
         catch { show(error) }
     }
 
@@ -145,11 +154,42 @@ final class ContentViewModel: ObservableObject {
         catch { show(error) }
     }
 
+    func reorder(
+        _ profile: APIProfile,
+        relativeTo target: APIProfile,
+        placeAfter: Bool
+    ) {
+        do {
+            try repository.reorder(
+                profile,
+                relativeTo: target,
+                placeAfter: placeAfter
+            )
+        }
+        catch { show(error) }
+    }
+
+    func reorder(
+        _ folder: ProfileFolder,
+        relativeTo target: ProfileFolder,
+        placeAfter: Bool
+    ) {
+        do {
+            try repository.reorder(
+                folder,
+                relativeTo: target,
+                placeAfter: placeAfter
+            )
+        }
+        catch { show(error) }
+    }
+
     func markdownBackup() throws -> String {
         try MarkdownBackupCodec.encode(repository.makeBackup())
     }
 
     func replaceAll(with backup: ModelTapBackup) {
+        invalidateActiveRequest()
         do {
             try repository.replaceAll(with: backup)
             selectedProfile = nil
@@ -165,15 +205,29 @@ final class ContentViewModel: ObservableObject {
         }
     }
 
+    func showToast(_ message: String) {
+        toastDismissTask?.cancel()
+        toast = RequestNotice(message: message)
+        toastDismissTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1.8))
+            guard !Task.isCancelled else { return }
+            self?.toast = nil
+        }
+    }
+
     func discover() {
         guard let profile = selectedProfile else { return }
-        requestTask?.cancel()
+        let profileID = profile.id
+        let requestID = beginRequest()
         loadState = .loading
         requestTask = Task { [weak self] in
             guard let self else { return }
+            defer { finishRequest(requestID) }
+            var apiKey = ""
             do {
-                let key = try repository.apiKey(for: profile)
-                let result = try await discovery.discover(baseURL: profile.baseURL, apiKey: key, format: profile.apiFormat)
+                apiKey = try repository.apiKey(for: profile)
+                let result = try await discovery.discover(baseURL: profile.baseURL, apiKey: apiKey, format: profile.apiFormat)
+                guard isCurrentRequest(requestID, profileID: profileID) else { return }
                 let existingSummaries = Dictionary(
                     uniqueKeysWithValues: models.compactMap { model in
                         model.latestTest.map { (model.id, $0) }
@@ -192,9 +246,15 @@ final class ContentViewModel: ObservableObject {
                 selectedModelID = models.first?.id
                 profile.lastUsedAt = .now
                 loadState = .loaded
-                try? modelContext.save()
+                do {
+                    try modelContext.save()
+                } catch {
+                    show(error)
+                }
             } catch {
-                if !Task.isCancelled { loadState = .failed(Self.friendlyMessage(error)) }
+                guard isCurrentRequest(requestID, profileID: profileID),
+                      !Self.isCancellation(error) else { return }
+                loadState = .failed(Self.friendlyMessage(error, apiKey: apiKey))
             }
         }
     }
@@ -206,78 +266,97 @@ final class ContentViewModel: ObservableObject {
 
     func test(modelID: String) {
         guard let profile = selectedProfile else { return }
-        requestTask?.cancel()
+        let profileID = profile.id
+        let requestID = beginRequest()
         if loadState == .loading {
             loadState = models.isEmpty ? .idle : .loaded
         }
         testingModelIDs = [modelID]
         requestTask = Task { [weak self] in
             guard let self else { return }
-            defer { testingModelIDs.remove(modelID) }
+            defer {
+                if activeRequestID == requestID {
+                    testingModelIDs.remove(modelID)
+                }
+                finishRequest(requestID)
+            }
             await Task.yield()
             let start = Date()
+            let apiKey: String
             do {
-                let key = try repository.apiKey(for: profile)
-                let summary = try await tester.test(modelID: modelID, baseURL: profile.baseURL, apiKey: key, format: profile.apiFormat)
-                updateModel(id: modelID, summary: summary)
-                selectedSummary = summary
+                apiKey = try repository.apiKey(for: profile)
+            } catch {
+                guard isCurrentRequest(requestID, profileID: profileID) else { return }
+                show(error)
+                return
+            }
+
+            let summary: ModelTestSummary
+            do {
+                summary = try await tester.test(modelID: modelID, baseURL: profile.baseURL, apiKey: apiKey, format: profile.apiFormat)
+            } catch {
+                guard !Self.isCancellation(error),
+                      isCurrentRequest(requestID, profileID: profileID) else { return }
+                summary = ModelTestSummary(success: false, statusCode: Self.statusCode(error), duration: Date().timeIntervalSince(start), testedAt: .now, protocolName: nil, output: nil, errorSummary: Self.friendlyMessage(error, apiKey: apiKey), tokenUsage: nil)
+            }
+
+            guard isCurrentRequest(requestID, profileID: profileID) else { return }
+            updateModel(id: modelID, summary: summary)
+            selectedSummary = summary
+            do {
                 try repository.saveTestRecord(summary, modelID: modelID, profile: profile)
             } catch {
-                let summary = ModelTestSummary(success: false, statusCode: Self.statusCode(error), duration: Date().timeIntervalSince(start), testedAt: .now, protocolName: nil, output: nil, errorSummary: Self.friendlyMessage(error), tokenUsage: nil)
-                updateModel(id: modelID, summary: summary)
-                selectedSummary = summary
-                try? repository.saveTestRecord(summary, modelID: modelID, profile: profile)
+                show(error)
             }
         }
     }
 
-    func testAll() {
-        guard let profile = selectedProfile, !filteredModels.isEmpty else { return }
-        requestTask?.cancel()
-        if loadState == .loading {
-            loadState = .loaded
-        }
-        isBatchTesting = true
-        batchProgress = (0, filteredModels.count)
-        testingModelIDs.removeAll()
-        let batchModels = filteredModels
-        requestTask = Task { [weak self] in
-            guard let self else { return }
-            let key = (try? repository.apiKey(for: profile)) ?? ""
-            let baseURL = profile.baseURL
-            let format = profile.apiFormat
-            let profileID = profile.id
-            let runner = BatchTestRunner { [weak self, tester] id in
-                self?.testingModelIDs = [id]
-                await Task.yield()
-                return try await tester.test(modelID: id, baseURL: baseURL, apiKey: key, format: format)
-            }
-            let result = await runner.run(models: batchModels, onResult: { [weak self] id, result in
-                guard let self else { return }
-                defer { testingModelIDs.remove(id) }
-                switch result {
-                case .success(let summary):
-                    updateModel(id: id, summary: summary)
-                    if let currentProfile = try? modelContext.fetch(FetchDescriptor<APIProfile>()).first(where: { $0.id == profileID }) { try? repository.saveTestRecord(summary, modelID: id, profile: currentProfile) }
-                case .failure(let error):
-                    let summary = ModelTestSummary(success: false, statusCode: Self.statusCode(error), duration: 0, testedAt: .now, protocolName: nil, output: nil, errorSummary: Self.friendlyMessage(error), tokenUsage: nil)
-                    updateModel(id: id, summary: summary)
-                    if let currentProfile = try? modelContext.fetch(FetchDescriptor<APIProfile>()).first(where: { $0.id == profileID }) { try? repository.saveTestRecord(summary, modelID: id, profile: currentProfile) }
-                }
-            }, onProgress: { [weak self] completed, total in self?.batchProgress = (completed, total) })
-            isBatchTesting = false
-            batchProgress = nil
-            testingModelIDs.removeAll()
-            notice = RequestNotice(message: "批量测试完成：成功 \(result.succeeded)，失败 \(result.failed)，耗时 \(Formatters.duration(result.duration))")
-        }
+    func cancel() {
+        invalidateActiveRequest()
+        loadState = models.isEmpty ? .idle : .loaded
     }
-
-    func cancel() { requestTask?.cancel(); requestTask = nil; isBatchTesting = false; batchProgress = nil; testingModelIDs.removeAll(); loadState = .idle }
 
     private func updateModel(id: String, summary: ModelTestSummary) { if let index = models.firstIndex(where: { $0.id == id }) { models[index].latestTest = summary } }
     private func show(_ error: Error) { notice = RequestNotice(message: Self.friendlyMessage(error)) }
+    func present(_ error: Error) { show(error) }
+
+    private func beginRequest() -> UUID {
+        requestTask?.cancel()
+        testingModelIDs.removeAll()
+        let requestID = UUID()
+        activeRequestID = requestID
+        return requestID
+    }
+
+    private func finishRequest(_ requestID: UUID) {
+        guard activeRequestID == requestID else { return }
+        activeRequestID = nil
+        requestTask = nil
+    }
+
+    private func invalidateActiveRequest() {
+        activeRequestID = nil
+        requestTask?.cancel()
+        requestTask = nil
+        testingModelIDs.removeAll()
+    }
+
+    private func isCurrentRequest(_ requestID: UUID, profileID: UUID) -> Bool {
+        activeRequestID == requestID
+            && selectedProfile?.id == profileID
+            && !Task.isCancelled
+    }
+
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        return (error as? APIError) == .cancelled
+    }
+
     static func statusCode(_ error: Error) -> Int? { if case APIError.http(let status, _, _) = error { return status }; return nil }
-    static func friendlyMessage(_ error: Error) -> String { (error as? LocalizedError)?.errorDescription ?? "操作失败，请稍后重试。" }
+    static func friendlyMessage(_ error: Error, apiKey: String? = nil) -> String {
+        let message = (error as? LocalizedError)?.errorDescription ?? "操作失败，请稍后重试。"
+        return Redaction.sensitive(message, apiKey: apiKey)
+    }
 }
 
 @MainActor

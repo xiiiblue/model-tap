@@ -9,6 +9,22 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertFalse(Redaction.sensitive("Bearer sk-1234567890abcd", apiKey: "sk-1234567890abcd").contains("sk-1234567890abcd"))
     }
 
+    func testTimestampFormat() throws {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = .current
+        components.year = 2026
+        components.month = 7
+        components.day = 29
+        components.hour = 13
+        components.minute = 33
+        components.second = 33
+
+        let date = try XCTUnwrap(components.date)
+
+        XCTAssertEqual(date.modelTapTimestamp, "2026-07-29 13:33:33")
+    }
+
     func testLocalAPIKeyCipherRoundTrip() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -21,6 +37,20 @@ final class SecurityAndBatchTests: XCTestCase {
 
         XCTAssertNotEqual(encrypted, Data("sk-fake".utf8))
         XCTAssertEqual(try cipher.decrypt(encrypted), "sk-fake")
+        let directoryPermissions = try FileManager.default.attributesOfItem(
+            atPath: directory.path
+        )[.posixPermissions] as? NSNumber
+        let keyPermissions = try FileManager.default.attributesOfItem(
+            atPath: directory.appendingPathComponent("local-encryption.key").path
+        )[.posixPermissions] as? NSNumber
+        XCTAssertEqual(
+            directoryPermissions.map { $0.intValue & 0o777 },
+            0o700
+        )
+        XCTAssertEqual(
+            keyPermissions.map { $0.intValue & 0o777 },
+            0o600
+        )
     }
 
     @MainActor func testRepositoryStoresEncryptedAPIKey() throws {
@@ -64,6 +94,90 @@ final class SecurityAndBatchTests: XCTestCase {
 
         try repository.deleteFolder(folder)
         XCTAssertNil(profile.folderID)
+    }
+
+    @MainActor func testRepositoryRejectsInvalidProfileFieldsAndReservedFolderNames() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: APIProfile.self,
+            ProfileFolder.self,
+            ModelTestRecord.self,
+            configurations: configuration
+        )
+        let repository = ProfileRepository(
+            modelContext: container.mainContext,
+            apiKeyCipher: TestAPIKeyCipher()
+        )
+
+        XCTAssertThrowsError(
+            try repository.saveProfile(
+                profile: nil,
+                name: " ",
+                baseURL: "https://example.test/v1",
+                apiKey: "",
+                apiFormat: .openAI,
+                folderID: nil,
+                notes: ""
+            )
+        )
+        XCTAssertThrowsError(
+            try repository.saveProfile(
+                profile: nil,
+                name: "测试",
+                baseURL: "ftp://example.test",
+                apiKey: "",
+                apiFormat: .openAI,
+                folderID: nil,
+                notes: ""
+            )
+        )
+        XCTAssertThrowsError(try repository.createFolder(name: "未分类"))
+        XCTAssertThrowsError(try repository.createFolder(name: "测试记录"))
+    }
+
+    @MainActor func testRepositoryPersistsFolderAndProfileReordering() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: APIProfile.self,
+            ProfileFolder.self,
+            ModelTestRecord.self,
+            configurations: configuration
+        )
+        let repository = ProfileRepository(
+            modelContext: container.mainContext,
+            apiKeyCipher: TestAPIKeyCipher()
+        )
+        let firstFolder = try repository.createFolder(name: "文件夹A")
+        let secondFolder = try repository.createFolder(name: "文件夹B")
+        let firstProfile = try repository.saveProfile(
+            profile: nil,
+            name: "配置A",
+            baseURL: "https://a.example.test/v1",
+            apiKey: "",
+            apiFormat: .openAI,
+            folderID: firstFolder.id,
+            notes: ""
+        )
+        let secondProfile = try repository.saveProfile(
+            profile: nil,
+            name: "配置B",
+            baseURL: "https://b.example.test/v1",
+            apiKey: "",
+            apiFormat: .openAI,
+            folderID: firstFolder.id,
+            notes: ""
+        )
+
+        try repository.reorder(secondFolder, relativeTo: firstFolder, placeAfter: false)
+        XCTAssertLessThan(secondFolder.sortOrder, firstFolder.sortOrder)
+
+        try repository.reorder(secondProfile, relativeTo: firstProfile, placeAfter: false)
+        XCTAssertEqual(secondProfile.folderID, firstFolder.id)
+        XCTAssertLessThan(secondProfile.sortOrder, firstProfile.sortOrder)
+
+        try repository.move(firstProfile, to: secondFolder)
+        XCTAssertEqual(firstProfile.folderID, secondFolder.id)
+        XCTAssertEqual(firstProfile.sortOrder, 0)
     }
 
     func testMarkdownBackupRoundTripKeepsAllConfigurationFields() throws {
@@ -141,6 +255,92 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertTrue(decoded.testRecords.isEmpty)
     }
 
+    func testReadableBackupHandlesReservedFolderNamesAndTrimmedEmptyAPIKey() throws {
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let unfiledNameFolderID = UUID()
+        let recordsNameFolderID = UUID()
+        let backup = ModelTapBackup(
+            formatVersion: ModelTapBackup.currentVersion,
+            exportedAt: date,
+            folders: [
+                .init(
+                    id: unfiledNameFolderID,
+                    name: "未分类",
+                    createdAt: date,
+                    updatedAt: date
+                ),
+                .init(
+                    id: recordsNameFolderID,
+                    name: "测试记录",
+                    createdAt: date,
+                    updatedAt: date
+                )
+            ],
+            profiles: [
+                makeBackupProfile(
+                    name: "配置A",
+                    folderID: unfiledNameFolderID,
+                    date: date
+                ),
+                makeBackupProfile(
+                    name: "配置B",
+                    folderID: recordsNameFolderID,
+                    date: date
+                )
+            ],
+            testRecords: []
+        )
+
+        let markdown = try MarkdownBackupCodec.encode(backup)
+            .replacingOccurrences(of: "API_KEY: \n", with: "API_KEY:\n")
+        let decoded = try MarkdownBackupCodec.decode(markdown)
+        let foldersByName = Dictionary(
+            uniqueKeysWithValues: decoded.folders.map { ($0.name, $0.id) }
+        )
+
+        XCTAssertTrue(markdown.contains("## **未分类**"))
+        XCTAssertTrue(markdown.contains("## **测试记录**"))
+        XCTAssertEqual(
+            decoded.profiles.first { $0.name == "配置A" }?.folderID,
+            foldersByName["未分类"]
+        )
+        XCTAssertEqual(
+            decoded.profiles.first { $0.name == "配置B" }?.folderID,
+            foldersByName["测试记录"]
+        )
+        XCTAssertTrue(decoded.profiles.allSatisfy { $0.apiKey.isEmpty })
+
+        let legacyUnescapedRecordsFolder = markdown.replacingOccurrences(
+            of: "## **测试记录**",
+            with: "## 测试记录"
+        )
+        let decodedLegacy = try MarkdownBackupCodec.decode(
+            legacyUnescapedRecordsFolder
+        )
+        XCTAssertEqual(
+            decodedLegacy.profiles.first { $0.name == "配置B" }?.folderID,
+            decodedLegacy.folders.first { $0.name == "测试记录" }?.id
+        )
+    }
+
+    func testReadableBackupCanRoundTripAnEmptyConfigurationSet() throws {
+        let backup = ModelTapBackup(
+            formatVersion: ModelTapBackup.currentVersion,
+            exportedAt: .now,
+            folders: [],
+            profiles: [],
+            testRecords: []
+        )
+
+        let decoded = try MarkdownBackupCodec.decode(
+            MarkdownBackupCodec.encode(backup)
+        )
+
+        XCTAssertTrue(decoded.folders.isEmpty)
+        XCTAssertTrue(decoded.profiles.isEmpty)
+        XCTAssertTrue(decoded.testRecords.isEmpty)
+    }
+
     func testMarkdownBackupCanImportLegacyVersionOne() throws {
         let folder = ModelTapBackup.Folder(
             id: UUID(),
@@ -165,16 +365,28 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertEqual(decoded.folders.first?.id, folder.id)
     }
 
-    @MainActor func testBatchContinuesAfterOneFailure() async {
-        let runner = BatchTestRunner { id in
-            if id == "bad" { throw APIError.http(status: 500, message: "fake", kind: .server) }
-            return ModelTestSummary(success: true, statusCode: 200, duration: 0.01, testedAt: .now, protocolName: .chatCompletions, output: "OK", errorSummary: nil, tokenUsage: nil)
-        }
-        var completed: [String] = []
-        let result = await runner.run(models: [ModelInfo(id: "good-1", object: nil, latestTest: nil), ModelInfo(id: "bad", object: nil, latestTest: nil), ModelInfo(id: "good-2", object: nil, latestTest: nil)], onResult: { id, _ in completed.append(id) }, onProgress: { _, _ in })
-        XCTAssertEqual(completed, ["good-1", "bad", "good-2"])
-        XCTAssertEqual(result.succeeded, 2)
-        XCTAssertEqual(result.failed, 1)
+    func testLegacyDefaultStoreIsCopiedToModelTapDirectory() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: root,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let legacyURL = root.appendingPathComponent("default.store")
+        try Data("SQLite data ZAPIPROFILE".utf8).write(to: legacyURL)
+
+        let storeURL = try PersistentStoreBootstrap.prepareStoreURL(
+            applicationSupportDirectory: root
+        )
+
+        XCTAssertEqual(
+            storeURL.lastPathComponent,
+            PersistentStoreBootstrap.storeFileName
+        )
+        XCTAssertTrue(FileManager.default.fileExists(atPath: storeURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: legacyURL.path))
     }
 
     @MainActor func testModelKeepsLoadingStateWhileRequestIsRunning() async throws {
@@ -211,6 +423,78 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertFalse(viewModel.testingModelIDs.contains("gpt-example"))
         XCTAssertTrue(viewModel.models.first?.latestTest?.success == true)
     }
+
+    @MainActor func testSwitchingProfilePreventsCancelledTestFromWritingBack() async throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: APIProfile.self,
+            ProfileFolder.self,
+            ModelTestRecord.self,
+            configurations: configuration
+        )
+        let viewModel = ContentViewModel(
+            modelContext: container.mainContext,
+            apiKeyCipher: TestAPIKeyCipher(),
+            client: DelayedAPIClient(delayNanoseconds: 250_000_000)
+        )
+        let firstProfile = try viewModel.repository.saveProfile(
+            profile: nil,
+            name: "配置A",
+            baseURL: "https://example.test/v1",
+            apiKey: "",
+            apiFormat: .openAI,
+            folderID: nil,
+            notes: ""
+        )
+        let secondProfile = try viewModel.repository.saveProfile(
+            profile: nil,
+            name: "配置B",
+            baseURL: "https://example.test/v1",
+            apiKey: "",
+            apiFormat: .openAI,
+            folderID: nil,
+            notes: ""
+        )
+        try viewModel.repository.addManualModel("gpt-example", to: secondProfile)
+        viewModel.selectedProfile = firstProfile
+        viewModel.models = [
+            ModelInfo(id: "gpt-example", object: "model", latestTest: nil)
+        ]
+
+        viewModel.test(modelID: "gpt-example")
+        await Task.yield()
+        viewModel.selectedProfile = secondProfile
+        viewModel.selectedProfileDidChange()
+        try await Task.sleep(nanoseconds: 350_000_000)
+
+        XCTAssertEqual(viewModel.models.map(\.id), ["gpt-example"])
+        XCTAssertNil(viewModel.models.first?.latestTest)
+        XCTAssertNil(viewModel.selectedSummary)
+        XCTAssertTrue(
+            try container.mainContext.fetch(FetchDescriptor<ModelTestRecord>()).isEmpty
+        )
+    }
+}
+
+private func makeBackupProfile(
+    name: String,
+    folderID: UUID?,
+    date: Date
+) -> ModelTapBackup.Profile {
+    .init(
+        id: UUID(),
+        name: name,
+        baseURL: "https://example.test/v1",
+        apiKey: "",
+        apiFormat: APIFormat.openAI.rawValue,
+        folderID: folderID,
+        notes: "",
+        manualModelIDs: [],
+        createdAt: date,
+        updatedAt: date,
+        lastUsedAt: nil,
+        lastTestStatus: ProfileTestStatus.notTested.rawValue
+    )
 }
 
 private struct TestAPIKeyCipher: APIKeyEncrypting {

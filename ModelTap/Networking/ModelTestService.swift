@@ -22,6 +22,14 @@ struct AnthropicContentItem: Decodable, Sendable {
     let type: String?
     let text: String?
 }
+struct ImageGenerationsResponse: Decodable, Sendable {
+    let data: [ImageGenerationItem]
+}
+struct ImageGenerationItem: Decodable, Sendable {
+    let b64JSON: String?
+    let url: String?
+    enum CodingKeys: String, CodingKey { case b64JSON = "b64_json", url }
+}
 struct UsagePayload: Decodable, Sendable {
     let promptTokens: Int?
     let completionTokens: Int?
@@ -41,6 +49,9 @@ struct ModelTestService: Sendable {
     let prompt = "仅回复：OK"
 
     func test(modelID: String, baseURL: String, apiKey: String, format: APIFormat) async throws -> ModelTestSummary {
+        if format != .anthropic, Self.isGPTImageModel(modelID) {
+            return try await testImageGeneration(modelID: modelID, baseURL: baseURL, apiKey: apiKey)
+        }
         switch format {
         case .openAI:
             return try await testChat(modelID: modelID, baseURL: baseURL, apiKey: apiKey)
@@ -51,13 +62,30 @@ struct ModelTestService: Sendable {
         }
     }
 
+    static func isGPTImageModel(_ modelID: String) -> Bool {
+        let normalizedID = modelID
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .split(separator: "/")
+            .last
+            .map(String.init) ?? ""
+        return normalizedID.hasPrefix("gpt-image-")
+    }
+
     private func testChat(modelID: String, baseURL: String, apiKey: String) async throws -> ModelTestSummary {
         let resolver = try EndpointResolver(baseURLString: baseURL)
         var request = URLRequest(url: resolver.chatCompletionsURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         addAuthorization(to: &request, apiKey: apiKey)
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": modelID, "messages": [["role": "user", "content": prompt]], "temperature": 0, "max_tokens": 16, "stream": false])
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: [
+                "model": modelID,
+                "messages": [
+                    ["role": "user", "content": prompt]
+                ]
+            ]
+        )
         let (data, response, duration) = try await client.request(request)
         guard (200..<300).contains(response.statusCode) else { throw ModelDiscoveryService.httpError(response, data: data) }
         let decoded: ChatCompletionsResponse
@@ -72,7 +100,12 @@ struct ModelTestService: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         addAuthorization(to: &request, apiKey: apiKey)
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["model": modelID, "input": prompt, "temperature": 0, "max_output_tokens": 16, "stream": false])
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: [
+                "model": modelID,
+                "input": prompt
+            ]
+        )
         let (data, response, duration) = try await client.request(request)
         guard (200..<300).contains(response.statusCode) else { throw ModelDiscoveryService.httpError(response, data: data) }
         let decoded: ResponsesResponse
@@ -80,6 +113,40 @@ struct ModelTestService: Sendable {
         let output = decoded.outputText ?? decoded.output?.flatMap { $0.content ?? [] }.compactMap(\ .text).joined() ?? ""
         guard !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw APIError.invalidModelOutput }
         return ModelTestSummary(success: true, statusCode: response.statusCode, duration: duration, testedAt: .now, protocolName: .responses, output: output, errorSummary: nil, tokenUsage: decoded.usage?.modelUsage)
+    }
+
+    private func testImageGeneration(modelID: String, baseURL: String, apiKey: String) async throws -> ModelTestSummary {
+        let resolver = try EndpointResolver(baseURLString: baseURL)
+        var request = URLRequest(url: resolver.imageGenerationsURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        addAuthorization(to: &request, apiKey: apiKey)
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "model": modelID,
+            "prompt": "生成一个纯白色的正方形图像。",
+            "n": 1,
+            "quality": "low",
+            "size": "1024x1024",
+            "output_format": "jpeg"
+        ])
+        let (data, response, duration) = try await client.request(request)
+        guard (200..<300).contains(response.statusCode) else { throw ModelDiscoveryService.httpError(response, data: data) }
+        let decoded: ImageGenerationsResponse
+        do { decoded = try JSONDecoder().decode(ImageGenerationsResponse.self, from: data) } catch { throw APIError.invalidJSON("Image Generations 响应") }
+        let hasImage = decoded.data.contains {
+            !($0.b64JSON?.isEmpty ?? true) || !($0.url?.isEmpty ?? true)
+        }
+        guard hasImage else { throw APIError.invalidModelOutput }
+        return ModelTestSummary(
+            success: true,
+            statusCode: response.statusCode,
+            duration: duration,
+            testedAt: .now,
+            protocolName: .imageGenerations,
+            output: nil,
+            errorSummary: nil,
+            tokenUsage: nil
+        )
     }
 
     private func testAnthropicMessages(modelID: String, baseURL: String, apiKey: String) async throws -> ModelTestSummary {

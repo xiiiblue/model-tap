@@ -7,11 +7,13 @@ final class ProfileFolder {
     var name: String
     var createdAt: Date
     var updatedAt: Date
+    var sortOrder: Int = 0
 
-    init(id: UUID = UUID(), name: String) {
+    init(id: UUID = UUID(), name: String, sortOrder: Int = 0) {
         self.id = id
         self.name = name
         self.createdAt = .now
         self.updatedAt = .now
+        self.sortOrder = sortOrder
     }
 }

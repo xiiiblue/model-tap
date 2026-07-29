@@ -3,21 +3,28 @@ import SwiftData
 
 @main
 struct ModelTapApp: App {
-    var sharedModelContainer: ModelContainer = {
-        let schema = Schema([APIProfile.self, ProfileFolder.self, ModelTestRecord.self])
-        let configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
+    private let storeState: StoreState
+
+    init() {
         do {
-            return try ModelContainer(for: schema, configurations: [configuration])
+            storeState = .ready(
+                try PersistentStoreBootstrap.makeContainer()
+            )
         } catch {
-            fatalError("无法创建本地数据存储：\(error.localizedDescription)")
+            storeState = .failed(error.localizedDescription)
         }
-    }()
+    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(modelContext: sharedModelContainer.mainContext)
+            switch storeState {
+            case .ready(let container):
+                ContentView(modelContext: container.mainContext)
+                    .modelContainer(container)
+            case .failed(let message):
+                PersistentStoreErrorView(message: message)
+            }
         }
-        .modelContainer(sharedModelContainer)
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("新建配置") {
@@ -29,6 +36,25 @@ struct ModelTapApp: App {
         Settings {
             SettingsView()
         }
+    }
+}
+
+private enum StoreState {
+    case ready(ModelContainer)
+    case failed(String)
+}
+
+private struct PersistentStoreErrorView: View {
+    let message: String
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("无法打开本地数据", systemImage: "externaldrive.badge.exclamationmark")
+        } description: {
+            Text("ModelTap无法访问本地配置数据库。请确认磁盘空间和“应用支持”目录权限后重新打开应用。\n\n\(message)")
+        }
+        .frame(minWidth: 680, minHeight: 480)
+        .padding(40)
     }
 }
 

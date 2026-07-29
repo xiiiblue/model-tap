@@ -52,6 +52,9 @@ enum MarkdownBackupError: LocalizedError {
     case duplicateFolderName
     case duplicateProfileID
     case duplicateTestRecordID
+    case invalidFolderName
+    case invalidProfileName
+    case invalidBaseURL(String)
     case invalidAPIFormat(String)
     case invalidFolderReference
     case invalidProfileReference
@@ -72,6 +75,12 @@ enum MarkdownBackupError: LocalizedError {
             return "备份中存在重复的配置ID。"
         case .duplicateTestRecordID:
             return "备份中存在重复的测试记录ID。"
+        case .invalidFolderName:
+            return "备份中包含空文件夹名称。"
+        case .invalidProfileName:
+            return "备份中包含空配置名称。"
+        case .invalidBaseURL(let baseURL):
+            return "备份中包含无效的Base URL：\(baseURL)。"
         case .invalidAPIFormat(let format):
             return "备份中包含不支持的API格式：\(format)。"
         case .invalidFolderReference:
@@ -83,6 +92,8 @@ enum MarkdownBackupError: LocalizedError {
 }
 
 enum MarkdownBackupCodec {
+    private static let readableBackupTitle = "# ModelTap配置备份"
+    private static let reservedFolderNames = ["未分类", "测试记录"]
     private static let versionPrefix = "<!-- modeltap-backup-version:"
     private static let folderMetadataPrefix = "<!-- modeltap-folder-meta:"
     private static let profileMetadataPrefix = "<!-- modeltap-profile-meta:"
@@ -115,14 +126,14 @@ enum MarkdownBackupCodec {
 
     static func encode(_ backup: ModelTapBackup) throws -> String {
         var lines = [
-            "# ModelTap配置备份",
+            readableBackupTitle,
             "",
             "> 警告：此文件包含明文API Key，请妥善保管，不要提交到公开仓库。",
             ""
         ]
 
         for folder in backup.folders {
-            lines.append("## \(singleLine(folder.name))")
+            lines.append("## \(encodedFolderHeading(folder.name))")
             lines.append("")
 
             for profile in backup.profiles where profile.folderID == folder.id {
@@ -153,7 +164,10 @@ enum MarkdownBackupCodec {
         case 1:
             backup = try decodeLegacyV1(lines)
         case ModelTapBackup.currentVersion, .none:
-            guard lines.contains(where: { $0.hasPrefix("BASE_URL: ") }) else {
+            let hasReadableProfile = lines.contains {
+                $0.hasPrefix("BASE_URL:")
+            }
+            guard lines.first == readableBackupTitle || hasReadableProfile else {
                 throw MarkdownBackupError.missingVersion
             }
             backup = try decodeReadableV2(lines)
@@ -172,6 +186,9 @@ enum MarkdownBackupCodec {
         let normalizedFolderNames = backup.folders.map {
             $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
+        guard normalizedFolderNames.allSatisfy({ !$0.isEmpty }) else {
+            throw MarkdownBackupError.invalidFolderName
+        }
         guard Set(normalizedFolderNames).count == normalizedFolderNames.count else {
             throw MarkdownBackupError.duplicateFolderName
         }
@@ -185,6 +202,12 @@ enum MarkdownBackupCodec {
         let folderIDs = Set(backup.folders.map(\.id))
         let profileIDs = Set(backup.profiles.map(\.id))
         for profile in backup.profiles {
+            guard !profile.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw MarkdownBackupError.invalidProfileName
+            }
+            guard (try? EndpointResolver(baseURLString: profile.baseURL)) != nil else {
+                throw MarkdownBackupError.invalidBaseURL(profile.baseURL)
+            }
             guard APIFormat(rawValue: profile.apiFormat) != nil else {
                 throw MarkdownBackupError.invalidAPIFormat(profile.apiFormat)
             }
@@ -247,15 +270,18 @@ enum MarkdownBackupCodec {
                 exportedAt = parseDate(
                     String(line.dropFirst("导出时间: ".count))
                 ) ?? exportedAt
-            } else if line == "## 测试记录" {
+            } else if line == "## 测试记录",
+                      isLegacyTestRecordsSection(lines, headingIndex: index) {
                 inTestRecords = true
                 currentFolderName = nil
                 currentFolderID = nil
                 currentFolderWasGenerated = false
             } else if line.hasPrefix("## ") {
                 inTestRecords = false
-                currentFolderName = String(line.dropFirst(3))
-                currentFolderWasGenerated = currentFolderName != "未分类"
+                let heading = decodedFolderHeading(String(line.dropFirst(3)))
+                currentFolderName = heading.name
+                currentFolderWasGenerated = heading.isExplicitFolder
+                    || currentFolderName != "未分类"
                 if currentFolderWasGenerated, let currentFolderName {
                     let folderID = UUID()
                     currentFolderID = folderID
@@ -358,6 +384,8 @@ enum MarkdownBackupCodec {
                 baseURL = parseMarkdownLink(
                     String(line.dropFirst("BASE_URL: ".count))
                 )
+            } else if line == "API_KEY:" {
+                apiKey = ""
             } else if line.hasPrefix("API_KEY: ") {
                 apiKey = String(line.dropFirst("API_KEY: ".count))
             } else if line.hasPrefix("API格式: ") {
@@ -569,6 +597,42 @@ enum MarkdownBackupCodec {
 
     private static func singleLine(_ value: String) -> String {
         value.replacingOccurrences(of: "\n", with: " ")
+    }
+
+    private static func encodedFolderHeading(_ value: String) -> String {
+        let value = singleLine(value)
+        return reservedFolderNames.contains(value) ? "**\(value)**" : value
+    }
+
+    private static func decodedFolderHeading(
+        _ value: String
+    ) -> (name: String, isExplicitFolder: Bool) {
+        for reservedName in reservedFolderNames
+        where value == "**\(reservedName)**" {
+            return (reservedName, true)
+        }
+        return (value, false)
+    }
+
+    private static func isLegacyTestRecordsSection(
+        _ lines: [String],
+        headingIndex: Int
+    ) -> Bool {
+        var index = headingIndex + 1
+        while index < lines.count, !lines[index].hasPrefix("## ") {
+            let line = lines[index]
+            if line.hasPrefix(folderMetadataPrefix)
+                || line.hasPrefix(profileMetadataPrefix)
+                || line.hasPrefix("BASE_URL:") {
+                return false
+            }
+            if line.hasPrefix(testMetadataPrefix)
+                || line.hasPrefix("模型:") {
+                return true
+            }
+            index += 1
+        }
+        return true
     }
 
     private static func parseDate(_ value: String) -> Date? {

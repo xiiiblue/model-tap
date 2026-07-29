@@ -4,11 +4,23 @@ import SwiftData
 enum FolderError: LocalizedError {
     case emptyName
     case duplicateName
+    case reservedName
 
     var errorDescription: String? {
         switch self {
         case .emptyName: return "文件夹名称不能为空。"
         case .duplicateName: return "已存在同名文件夹。"
+        case .reservedName: return "“未分类”和“测试记录”是系统保留名称，请使用其他名称。"
+        }
+    }
+}
+
+enum ProfileError: LocalizedError {
+    case emptyName
+
+    var errorDescription: String? {
+        switch self {
+        case .emptyName: return "配置名称不能为空。"
         }
     }
 }
@@ -27,19 +39,47 @@ final class ProfileRepository {
     }
 
     func saveProfile(profile: APIProfile?, name: String, baseURL: String, apiKey: String, apiFormat: APIFormat, folderID: UUID?, notes: String) throws -> APIProfile {
-        let profile = profile ?? APIProfile(name: name, baseURL: baseURL, apiFormat: apiFormat, folderID: folderID, notes: notes)
-        profile.encryptedAPIKey = apiKey.isEmpty ? nil : try apiKeyCipher.encrypt(apiKey)
-        profile.keychainReference = nil
-        profile.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        profile.apiFormat = apiFormat
-        profile.folderID = folderID
-        profile.category = nil
-        profile.notes = notes
-        profile.updatedAt = .now
-        if profile.modelContext == nil { modelContext.insert(profile) }
-        try modelContext.save()
-        return profile
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseURL = baseURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { throw ProfileError.emptyName }
+        _ = try EndpointResolver(baseURLString: baseURL)
+        let encryptedAPIKey = apiKey.isEmpty ? nil : try apiKeyCipher.encrypt(apiKey)
+        let previousFolderID = profile?.folderID
+        let isNewProfile = profile == nil
+        let savedProfile: APIProfile
+        if let existingProfile = profile {
+            savedProfile = existingProfile
+        } else {
+            savedProfile = APIProfile(
+                name: name,
+                baseURL: baseURL,
+                apiFormat: apiFormat,
+                folderID: folderID,
+                notes: notes,
+                sortOrder: try nextProfileSortOrder(in: folderID)
+            )
+        }
+        savedProfile.encryptedAPIKey = encryptedAPIKey
+        savedProfile.keychainReference = nil
+        savedProfile.name = name
+        savedProfile.baseURL = baseURL
+        savedProfile.apiFormat = apiFormat
+        savedProfile.folderID = folderID
+        if !isNewProfile, previousFolderID != folderID {
+            savedProfile.sortOrder = try nextProfileSortOrder(
+                in: folderID,
+                excluding: savedProfile.id
+            )
+        }
+        savedProfile.category = nil
+        savedProfile.notes = notes
+        savedProfile.updatedAt = .now
+        if savedProfile.modelContext == nil { modelContext.insert(savedProfile) }
+        if !isNewProfile, previousFolderID != folderID {
+            try normalizeProfiles(in: previousFolderID, excluding: savedProfile.id)
+        }
+        try saveChanges()
+        return savedProfile
     }
 
     func apiKey(for profile: APIProfile) throws -> String {
@@ -52,14 +92,14 @@ final class ProfileRepository {
         let descriptor = FetchDescriptor<ModelTestRecord>(predicate: #Predicate { $0.profileID == profileID })
         for record in try modelContext.fetch(descriptor) { modelContext.delete(record) }
         modelContext.delete(profile)
-        try modelContext.save()
+        try saveChanges()
     }
 
     func duplicate(_ profile: APIProfile) throws -> APIProfile {
         let key = try apiKey(for: profile)
         let duplicate = try saveProfile(profile: nil, name: "\(profile.name) 副本", baseURL: profile.baseURL, apiKey: key, apiFormat: profile.apiFormat, folderID: profile.folderID, notes: profile.notes)
         duplicate.manualModelIDs = profile.manualModelIDs
-        try modelContext.save()
+        try saveChanges()
         return duplicate
     }
 
@@ -67,27 +107,30 @@ final class ProfileRepository {
         guard !profile.manualModelIDs.contains(modelID) else { return }
         profile.manualModelIDs.append(modelID)
         profile.updatedAt = .now
-        try modelContext.save()
+        try saveChanges()
     }
 
     func removeManualModel(_ modelID: String, from profile: APIProfile) throws {
         profile.manualModelIDs.removeAll { $0 == modelID }
         profile.updatedAt = .now
-        try modelContext.save()
+        try saveChanges()
     }
 
     func createFolder(name: String) throws -> ProfileFolder {
         let name = try validatedFolderName(name, excluding: nil)
-        let folder = ProfileFolder(name: name)
+        let folder = ProfileFolder(
+            name: name,
+            sortOrder: try nextFolderSortOrder()
+        )
         modelContext.insert(folder)
-        try modelContext.save()
+        try saveChanges()
         return folder
     }
 
     func renameFolder(_ folder: ProfileFolder, name: String) throws {
         folder.name = try validatedFolderName(name, excluding: folder.id)
         folder.updatedAt = .now
-        try modelContext.save()
+        try saveChanges()
     }
 
     func deleteFolder(_ folder: ProfileFolder) throws {
@@ -95,18 +138,74 @@ final class ProfileRepository {
         let descriptor = FetchDescriptor<APIProfile>(
             predicate: #Predicate { $0.folderID == folderID }
         )
-        for profile in try modelContext.fetch(descriptor) {
+        var nextOrder = try nextProfileSortOrder(in: nil)
+        let folderProfiles = try modelContext.fetch(descriptor).sorted(by: profileComesBefore)
+        for profile in folderProfiles {
             profile.folderID = nil
+            profile.sortOrder = nextOrder
+            nextOrder += 1
             profile.updatedAt = .now
         }
         modelContext.delete(folder)
-        try modelContext.save()
+        try saveChanges()
     }
 
     func move(_ profile: APIProfile, to folder: ProfileFolder?) throws {
+        let previousFolderID = profile.folderID
         profile.folderID = folder?.id
+        profile.sortOrder = try nextProfileSortOrder(
+            in: folder?.id,
+            excluding: profile.id
+        )
         profile.updatedAt = .now
-        try modelContext.save()
+        try normalizeProfiles(in: previousFolderID, excluding: profile.id)
+        try saveChanges()
+    }
+
+    func reorder(
+        _ profile: APIProfile,
+        relativeTo target: APIProfile,
+        placeAfter: Bool
+    ) throws {
+        guard profile.id != target.id else { return }
+        let previousFolderID = profile.folderID
+        let destinationFolderID = target.folderID
+        var destinationProfiles = try orderedProfiles(in: destinationFolderID)
+            .filter { $0.id != profile.id }
+        guard let targetIndex = destinationProfiles.firstIndex(where: {
+            $0.id == target.id
+        }) else { return }
+
+        profile.folderID = destinationFolderID
+        let insertionIndex = placeAfter ? targetIndex + 1 : targetIndex
+        destinationProfiles.insert(profile, at: insertionIndex)
+        for (index, item) in destinationProfiles.enumerated() {
+            item.sortOrder = index
+            item.updatedAt = .now
+        }
+        if previousFolderID != destinationFolderID {
+            try normalizeProfiles(in: previousFolderID, excluding: profile.id)
+        }
+        try saveChanges()
+    }
+
+    func reorder(
+        _ folder: ProfileFolder,
+        relativeTo target: ProfileFolder,
+        placeAfter: Bool
+    ) throws {
+        guard folder.id != target.id else { return }
+        var ordered = try orderedFolders().filter { $0.id != folder.id }
+        guard let targetIndex = ordered.firstIndex(where: {
+            $0.id == target.id
+        }) else { return }
+        let insertionIndex = placeAfter ? targetIndex + 1 : targetIndex
+        ordered.insert(folder, at: insertionIndex)
+        for (index, item) in ordered.enumerated() {
+            item.sortOrder = index
+            item.updatedAt = .now
+        }
+        try saveChanges()
     }
 
     func migrateLegacyCategories() throws {
@@ -127,27 +226,27 @@ final class ProfileRepository {
             }) {
                 folder = existing
             } else {
-                folder = ProfileFolder(name: category)
+                folder = ProfileFolder(
+                    name: category,
+                    sortOrder: try nextFolderSortOrder()
+                )
                 modelContext.insert(folder)
                 folders.append(folder)
             }
             profile.folderID = folder.id
+            profile.sortOrder = try nextProfileSortOrder(
+                in: folder.id,
+                excluding: profile.id
+            )
             profile.category = nil
         }
-        try modelContext.save()
+        try saveChanges()
     }
 
     func makeBackup() throws -> ModelTapBackup {
-        let folders = try modelContext.fetch(
-            FetchDescriptor<ProfileFolder>(
-                sortBy: [SortDescriptor(\ProfileFolder.name)]
-            )
-        )
-        let profiles = try modelContext.fetch(
-            FetchDescriptor<APIProfile>(
-                sortBy: [SortDescriptor(\APIProfile.createdAt)]
-            )
-        )
+        let folders = try orderedFolders()
+        let profiles = try modelContext.fetch(FetchDescriptor<APIProfile>())
+            .sorted(by: profileComesBefore)
         let records = try modelContext.fetch(
             FetchDescriptor<ModelTestRecord>(
                 sortBy: [SortDescriptor(\ModelTestRecord.testedAt)]
@@ -218,17 +317,19 @@ final class ProfileRepository {
             uniqueKeysWithValues: existingRecords.map { ($0.id, $0) }
         )
 
-        for item in backup.folders {
+        for (folderIndex, item) in backup.folders.enumerated() {
             let folder = foldersByID.removeValue(forKey: item.id)
                 ?? ProfileFolder(id: item.id, name: item.name)
             folder.name = item.name
             folder.createdAt = item.createdAt
             folder.updatedAt = item.updatedAt
+            folder.sortOrder = folderIndex
             if folder.modelContext == nil {
                 modelContext.insert(folder)
             }
         }
 
+        var profileOrderByFolder: [UUID?: Int] = [:]
         for item in backup.profiles {
             let profile = profilesByID.removeValue(forKey: item.id)
                 ?? APIProfile(
@@ -242,6 +343,8 @@ final class ProfileRepository {
             profile.folderID = item.folderID
             profile.notes = item.notes
             profile.manualModelIDs = item.manualModelIDs ?? []
+            profile.sortOrder = profileOrderByFolder[item.folderID, default: 0]
+            profileOrderByFolder[item.folderID, default: 0] += 1
             profile.createdAt = item.createdAt
             profile.updatedAt = item.updatedAt
             profile.lastUsedAt = item.lastUsedAt
@@ -285,7 +388,7 @@ final class ProfileRepository {
         recordsByID.values.forEach(modelContext.delete)
         profilesByID.values.forEach(modelContext.delete)
         foldersByID.values.forEach(modelContext.delete)
-        try modelContext.save()
+        try saveChanges()
     }
 
     func saveTestRecord(_ summary: ModelTestSummary, modelID: String, profile: APIProfile) throws {
@@ -297,12 +400,15 @@ final class ProfileRepository {
         let descriptor = FetchDescriptor<ModelTestRecord>(predicate: #Predicate { $0.profileID == profileID }, sortBy: [SortDescriptor(\ModelTestRecord.testedAt, order: .reverse)])
         let records = try modelContext.fetch(descriptor)
         if records.count > 100 { records.dropFirst(100).forEach(modelContext.delete) }
-        try modelContext.save()
+        try saveChanges()
     }
 
     private func validatedFolderName(_ value: String, excluding folderID: UUID?) throws -> String {
         let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else { throw FolderError.emptyName }
+        guard !["未分类", "测试记录"].contains(name) else {
+            throw FolderError.reservedName
+        }
         let folders = try modelContext.fetch(FetchDescriptor<ProfileFolder>())
         let duplicate = folders.contains {
             $0.id != folderID
@@ -310,5 +416,70 @@ final class ProfileRepository {
         }
         guard !duplicate else { throw FolderError.duplicateName }
         return name
+    }
+
+    private func saveChanges() throws {
+        do {
+            try modelContext.save()
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+
+    private func orderedFolders() throws -> [ProfileFolder] {
+        try modelContext.fetch(FetchDescriptor<ProfileFolder>())
+            .sorted {
+                if $0.sortOrder != $1.sortOrder {
+                    return $0.sortOrder < $1.sortOrder
+                }
+                return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+            }
+    }
+
+    private func orderedProfiles(in folderID: UUID?) throws -> [APIProfile] {
+        try modelContext.fetch(FetchDescriptor<APIProfile>())
+            .filter { $0.folderID == folderID }
+            .sorted(by: profileComesBefore)
+    }
+
+    private func profileComesBefore(_ lhs: APIProfile, _ rhs: APIProfile) -> Bool {
+        if lhs.sortOrder != rhs.sortOrder {
+            return lhs.sortOrder < rhs.sortOrder
+        }
+        if lhs.updatedAt != rhs.updatedAt {
+            return lhs.updatedAt > rhs.updatedAt
+        }
+        return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+    }
+
+    private func nextFolderSortOrder() throws -> Int {
+        (try modelContext.fetch(FetchDescriptor<ProfileFolder>())
+            .map(\.sortOrder)
+            .max() ?? -1) + 1
+    }
+
+    private func nextProfileSortOrder(
+        in folderID: UUID?,
+        excluding profileID: UUID? = nil
+    ) throws -> Int {
+        let orders = try modelContext.fetch(FetchDescriptor<APIProfile>())
+            .filter { profile in
+                profile.folderID == folderID
+                    && (profileID.map { profile.id != $0 } ?? true)
+            }
+            .map(\.sortOrder)
+        return (orders.max() ?? -1) + 1
+    }
+
+    private func normalizeProfiles(
+        in folderID: UUID?,
+        excluding profileID: UUID? = nil
+    ) throws {
+        let values = try orderedProfiles(in: folderID)
+            .filter { $0.id != profileID }
+        for (index, profile) in values.enumerated() {
+            profile.sortOrder = index
+        }
     }
 }

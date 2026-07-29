@@ -45,10 +45,11 @@ final class APIProfile {
     var apiFormatRaw: String = APIFormat.openAI.rawValue
     var folderID: UUID?
     var manualModelIDsRaw: String = ""
+    var sortOrder: Int = 0
     // 仅用于将上一版文本分类迁移为文件夹。
     var category: String?
 
-    init(id: UUID = UUID(), name: String, baseURL: String, apiFormat: APIFormat = .openAI, folderID: UUID? = nil, notes: String = "") {
+    init(id: UUID = UUID(), name: String, baseURL: String, apiFormat: APIFormat = .openAI, folderID: UUID? = nil, notes: String = "", sortOrder: Int = 0) {
         self.id = id
         self.name = name
         self.baseURL = baseURL
@@ -62,6 +63,7 @@ final class APIProfile {
         self.apiFormatRaw = apiFormat.rawValue
         self.folderID = folderID
         self.manualModelIDsRaw = ""
+        self.sortOrder = sortOrder
         self.category = nil
     }
 

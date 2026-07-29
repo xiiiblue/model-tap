@@ -36,8 +36,12 @@ struct ModelDiscoveryService: Sendable {
         guard (200..<300).contains(response.statusCode) else { throw Self.httpError(response, data: data) }
         let decoded: ModelListResponse
         do { decoded = try JSONDecoder().decode(ModelListResponse.self, from: data) } catch { throw APIError.invalidJSON("模型列表") }
-        guard !decoded.data.isEmpty else { throw APIError.emptyModels }
-        return (decoded.data.map { ModelInfo(id: $0.id, object: $0.object, latestTest: nil) }, duration, response.statusCode, .now)
+        var seenModelIDs: Set<String> = []
+        let models = decoded.data
+            .filter { seenModelIDs.insert($0.id).inserted }
+            .map { ModelInfo(id: $0.id, object: $0.object, latestTest: nil) }
+        guard !models.isEmpty else { throw APIError.emptyModels }
+        return (models, duration, response.statusCode, .now)
     }
 
     private func addAuthentication(to request: inout URLRequest, apiKey: String, format: APIFormat) {
