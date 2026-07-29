@@ -4,7 +4,6 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var viewModel: ContentViewModel
-    @State private var isExportConfirmationPresented = false
     @State private var isExporterPresented = false
     @State private var exportDocument = MarkdownBackupDocument(text: "")
     @State private var isImporterPresented = false
@@ -60,7 +59,7 @@ struct ContentView: View {
                         "导出配置备份",
                         systemImage: "square.and.arrow.up"
                     ) {
-                        isExportConfirmationPresented = true
+                        prepareExport()
                     }
                 } label: {
                     Image(systemName: "arrow.up.arrow.down.circle")
@@ -70,18 +69,6 @@ struct ContentView: View {
         }
         .sheet(item: $viewModel.editor) { _ in ProfileEditorView(editor: $viewModel.editor, onSave: viewModel.saveEditor) }
         .alert(item: $viewModel.notice) { notice in Alert(title: Text(notice.message)) }
-        .confirmationDialog(
-            "导出配置备份？",
-            isPresented: $isExportConfirmationPresented,
-            titleVisibility: .visible
-        ) {
-            Button("选择保存位置") {
-                prepareExport()
-            }
-            Button("取消", role: .cancel) {}
-        } message: {
-            Text("Markdown备份包含明文API Key，请妥善保管。")
-        }
         .fileExporter(
             isPresented: $isExporterPresented,
             document: exportDocument,
