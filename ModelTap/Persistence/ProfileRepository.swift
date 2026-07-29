@@ -121,6 +121,155 @@ final class ProfileRepository {
         try modelContext.save()
     }
 
+    func makeBackup() throws -> ModelTapBackup {
+        let folders = try modelContext.fetch(
+            FetchDescriptor<ProfileFolder>(
+                sortBy: [SortDescriptor(\ProfileFolder.name)]
+            )
+        )
+        let profiles = try modelContext.fetch(
+            FetchDescriptor<APIProfile>(
+                sortBy: [SortDescriptor(\APIProfile.createdAt)]
+            )
+        )
+        let records = try modelContext.fetch(
+            FetchDescriptor<ModelTestRecord>(
+                sortBy: [SortDescriptor(\ModelTestRecord.testedAt)]
+            )
+        )
+
+        return ModelTapBackup(
+            formatVersion: ModelTapBackup.currentVersion,
+            exportedAt: .now,
+            folders: folders.map {
+                ModelTapBackup.Folder(
+                    id: $0.id,
+                    name: $0.name,
+                    createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt
+                )
+            },
+            profiles: try profiles.map {
+                ModelTapBackup.Profile(
+                    id: $0.id,
+                    name: $0.name,
+                    baseURL: $0.baseURL,
+                    apiKey: try apiKey(for: $0),
+                    apiFormat: $0.apiFormat.rawValue,
+                    folderID: $0.folderID,
+                    notes: $0.notes,
+                    createdAt: $0.createdAt,
+                    updatedAt: $0.updatedAt,
+                    lastUsedAt: $0.lastUsedAt,
+                    lastTestStatus: $0.lastTestStatusRaw
+                )
+            },
+            testRecords: records.map {
+                ModelTapBackup.TestRecord(
+                    id: $0.id,
+                    profileID: $0.profileID,
+                    modelID: $0.modelID,
+                    testedAt: $0.testedAt,
+                    success: $0.success,
+                    statusCode: $0.statusCode,
+                    duration: $0.duration,
+                    protocolName: $0.protocolNameRaw,
+                    errorSummary: $0.errorSummary
+                )
+            }
+        )
+    }
+
+    func replaceAll(with backup: ModelTapBackup) throws {
+        try MarkdownBackupCodec.validate(backup)
+
+        var encryptedKeys: [UUID: Data] = [:]
+        for profile in backup.profiles where !profile.apiKey.isEmpty {
+            encryptedKeys[profile.id] = try apiKeyCipher.encrypt(profile.apiKey)
+        }
+
+        let existingFolders = try modelContext.fetch(FetchDescriptor<ProfileFolder>())
+        let existingProfiles = try modelContext.fetch(FetchDescriptor<APIProfile>())
+        let existingRecords = try modelContext.fetch(FetchDescriptor<ModelTestRecord>())
+        var foldersByID = Dictionary(
+            uniqueKeysWithValues: existingFolders.map { ($0.id, $0) }
+        )
+        var profilesByID = Dictionary(
+            uniqueKeysWithValues: existingProfiles.map { ($0.id, $0) }
+        )
+        var recordsByID = Dictionary(
+            uniqueKeysWithValues: existingRecords.map { ($0.id, $0) }
+        )
+
+        for item in backup.folders {
+            let folder = foldersByID.removeValue(forKey: item.id)
+                ?? ProfileFolder(id: item.id, name: item.name)
+            folder.name = item.name
+            folder.createdAt = item.createdAt
+            folder.updatedAt = item.updatedAt
+            if folder.modelContext == nil {
+                modelContext.insert(folder)
+            }
+        }
+
+        for item in backup.profiles {
+            let profile = profilesByID.removeValue(forKey: item.id)
+                ?? APIProfile(
+                    id: item.id,
+                    name: item.name,
+                    baseURL: item.baseURL
+                )
+            profile.name = item.name
+            profile.baseURL = item.baseURL
+            profile.apiFormatRaw = item.apiFormat
+            profile.folderID = item.folderID
+            profile.notes = item.notes
+            profile.createdAt = item.createdAt
+            profile.updatedAt = item.updatedAt
+            profile.lastUsedAt = item.lastUsedAt
+            profile.lastTestStatusRaw = item.lastTestStatus
+            profile.encryptedAPIKey = encryptedKeys[item.id]
+            profile.keychainReference = nil
+            profile.category = nil
+            if profile.modelContext == nil {
+                modelContext.insert(profile)
+            }
+        }
+
+        for item in backup.testRecords {
+            let record = recordsByID.removeValue(forKey: item.id)
+                ?? ModelTestRecord(
+                    profileID: item.profileID,
+                    modelID: item.modelID,
+                    testedAt: item.testedAt,
+                    success: item.success,
+                    statusCode: item.statusCode,
+                    duration: item.duration,
+                    protocolName: item.protocolName.flatMap {
+                        APIProtocolName(rawValue: $0)
+                    },
+                    errorSummary: item.errorSummary
+                )
+            record.id = item.id
+            record.profileID = item.profileID
+            record.modelID = item.modelID
+            record.testedAt = item.testedAt
+            record.success = item.success
+            record.statusCode = item.statusCode
+            record.duration = item.duration
+            record.protocolNameRaw = item.protocolName
+            record.errorSummary = item.errorSummary
+            if record.modelContext == nil {
+                modelContext.insert(record)
+            }
+        }
+
+        recordsByID.values.forEach(modelContext.delete)
+        profilesByID.values.forEach(modelContext.delete)
+        foldersByID.values.forEach(modelContext.delete)
+        try modelContext.save()
+    }
+
     func saveTestRecord(_ summary: ModelTestSummary, modelID: String, profile: APIProfile) throws {
         let record = ModelTestRecord(profileID: profile.id, modelID: modelID, success: summary.success, statusCode: summary.statusCode, duration: summary.duration, protocolName: summary.protocolName, errorSummary: summary.errorSummary)
         modelContext.insert(record)

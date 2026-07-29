@@ -59,6 +59,63 @@ final class SecurityAndBatchTests: XCTestCase {
         XCTAssertNil(profile.folderID)
     }
 
+    func testMarkdownBackupRoundTripKeepsAllConfigurationFields() throws {
+        let folderID = UUID()
+        let profileID = UUID()
+        let recordID = UUID()
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        let backup = ModelTapBackup(
+            formatVersion: ModelTapBackup.currentVersion,
+            exportedAt: date,
+            folders: [
+                .init(
+                    id: folderID,
+                    name: "生产环境",
+                    createdAt: date,
+                    updatedAt: date
+                )
+            ],
+            profiles: [
+                .init(
+                    id: profileID,
+                    name: "主配置",
+                    baseURL: "https://example.test/v1",
+                    apiKey: "sk-`特殊字符`",
+                    apiFormat: APIFormat.openAIResponses.rawValue,
+                    folderID: folderID,
+                    notes: "第一行\n第二行",
+                    createdAt: date,
+                    updatedAt: date,
+                    lastUsedAt: date,
+                    lastTestStatus: ProfileTestStatus.success.rawValue
+                )
+            ],
+            testRecords: [
+                .init(
+                    id: recordID,
+                    profileID: profileID,
+                    modelID: "gpt-example",
+                    testedAt: date,
+                    success: true,
+                    statusCode: 200,
+                    duration: 0.25,
+                    protocolName: APIProtocolName.responses.rawValue,
+                    errorSummary: nil
+                )
+            ]
+        )
+
+        let markdown = try MarkdownBackupCodec.encode(backup)
+        let decoded = try MarkdownBackupCodec.decode(markdown)
+
+        XCTAssertTrue(markdown.contains("明文API Key"))
+        XCTAssertEqual(decoded.folders.first?.name, "生产环境")
+        XCTAssertEqual(decoded.profiles.first?.apiKey, "sk-`特殊字符`")
+        XCTAssertEqual(decoded.profiles.first?.notes, "第一行\n第二行")
+        XCTAssertEqual(decoded.profiles.first?.apiFormat, "openai-response")
+        XCTAssertEqual(decoded.testRecords.first?.id, recordID)
+    }
+
     @MainActor func testBatchContinuesAfterOneFailure() async {
         let runner = BatchTestRunner { id in
             if id == "bad" { throw APIError.http(status: 500, message: "fake", kind: .server) }

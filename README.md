@@ -37,3 +37,9 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTapTests -configuration Debu
 ## 已知限制
 
 第一阶段不包含流式聊天、并发压测、价格统计、其他专用协议、自定义请求头、云同步和自动更新。真实接口测试需要用户自行配置服务地址；Preview 和 XCTest 不依赖真实 API。
+
+## 全量导入导出
+
+侧边栏工具栏的导入导出菜单支持Markdown全量备份。备份包含文件夹、全部API配置、API格式、Base URL、备注、测试历史和API Key；导入前会校验文件并显示数据数量，确认后完整替换当前数据。
+
+Markdown备份中的API Key为明文，仅用于用户主动迁移和备份。请妥善保管备份文件，不要提交到公开仓库或发送给不受信任的第三方。

@@ -1,8 +1,14 @@
 import SwiftUI
 import SwiftData
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @StateObject private var viewModel: ContentViewModel
+    @State private var isExportConfirmationPresented = false
+    @State private var isExporterPresented = false
+    @State private var exportDocument = MarkdownBackupDocument(text: "")
+    @State private var isImporterPresented = false
+    @State private var pendingImport: ModelTapBackup?
 
     init(modelContext: ModelContext? = nil) {
         if let modelContext {
@@ -33,7 +39,9 @@ struct ContentView: View {
                 onCreateFolder: viewModel.createFolder,
                 onRenameFolder: viewModel.renameFolder,
                 onDeleteFolder: viewModel.deleteFolder,
-                onMoveProfile: viewModel.move
+                onMoveProfile: viewModel.move,
+                onImportBackup: { isImporterPresented = true },
+                onExportBackup: { isExportConfirmationPresented = true }
             )
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280)
         } detail: {
@@ -43,6 +51,54 @@ struct ContentView: View {
         .frame(minWidth: 900, minHeight: 560)
         .sheet(item: $viewModel.editor) { _ in ProfileEditorView(editor: $viewModel.editor, onSave: viewModel.saveEditor) }
         .alert(item: $viewModel.notice) { notice in Alert(title: Text(notice.message)) }
+        .confirmationDialog(
+            "导出全量备份？",
+            isPresented: $isExportConfirmationPresented,
+            titleVisibility: .visible
+        ) {
+            Button("选择保存位置") {
+                prepareExport()
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("Markdown备份包含明文API Key，请妥善保管。")
+        }
+        .fileExporter(
+            isPresented: $isExporterPresented,
+            document: exportDocument,
+            contentType: .modelTapMarkdown,
+            defaultFilename: "ModelTap-Backup"
+        ) { result in
+            if case .failure(let error) = result {
+                show(error)
+            }
+        }
+        .fileImporter(
+            isPresented: $isImporterPresented,
+            allowedContentTypes: [.modelTapMarkdown, .plainText],
+            allowsMultipleSelection: false,
+            onCompletion: handleImportSelection
+        )
+        .confirmationDialog(
+            "导入全量备份？",
+            isPresented: pendingImportBinding,
+            titleVisibility: .visible
+        ) {
+            Button("替换当前全部数据", role: .destructive) {
+                guard let backup = pendingImport else { return }
+                pendingImport = nil
+                viewModel.replaceAll(with: backup)
+            }
+            Button("取消", role: .cancel) {
+                pendingImport = nil
+            }
+        } message: {
+            if let backup = pendingImport {
+                Text(
+                    "将删除当前全部数据，并导入\(backup.folders.count)个文件夹、\(backup.profiles.count)项配置和\(backup.testRecords.count)条测试记录。"
+                )
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .modelTapNewProfile)) { _ in viewModel.startNewProfile() }
         .onChange(of: viewModel.selectedProfile) { _, profile in if profile != nil { viewModel.models = []; viewModel.loadState = .idle } }
     }
@@ -68,6 +124,75 @@ struct ContentView: View {
     private func copyURL(_ profile: APIProfile) { Clipboard.copy(profile.baseURL); viewModel.notice = RequestNotice(message: "Base URL 已复制") }
     private func copyKey(_ profile: APIProfile) { let key = try? viewModel.repository.apiKey(for: profile); Clipboard.copy(key ?? ""); viewModel.notice = RequestNotice(message: "API Key 已复制") }
     private func copyEnvironment(_ profile: APIProfile) { let key = (try? viewModel.repository.apiKey(for: profile)) ?? ""; Clipboard.copy(environmentExample(for: profile, apiKey: key)); viewModel.notice = RequestNotice(message: "环境变量示例已复制") }
+
+    private var pendingImportBinding: Binding<Bool> {
+        Binding(
+            get: { pendingImport != nil },
+            set: { if !$0 { pendingImport = nil } }
+        )
+    }
+
+    private func prepareExport() {
+        do {
+            exportDocument = MarkdownBackupDocument(
+                text: try viewModel.markdownBackup()
+            )
+            isExporterPresented = true
+        } catch {
+            show(error)
+        }
+    }
+
+    private func handleImportSelection(_ result: Result<[URL], Error>) {
+        do {
+            guard let url = try result.get().first else { return }
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessed {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            let markdown = try String(contentsOf: url, encoding: .utf8)
+            pendingImport = try MarkdownBackupCodec.decode(markdown)
+        } catch {
+            show(error)
+        }
+    }
+
+    private func show(_ error: Error) {
+        viewModel.notice = RequestNotice(
+            message: ContentViewModel.friendlyMessage(error)
+        )
+    }
+}
+
+private struct MarkdownBackupDocument: FileDocument {
+    static var readableContentTypes: [UTType] {
+        [.modelTapMarkdown, .plainText]
+    }
+
+    var text: String
+
+    init(text: String) {
+        self.text = text
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        text = String(decoding: data, as: UTF8.self)
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
+    }
+}
+
+private extension UTType {
+    static var modelTapMarkdown: UTType {
+        UTType(filenameExtension: "md", conformingTo: .plainText) ?? .plainText
+    }
 }
 
 private struct ProfileDetailHeader: View {

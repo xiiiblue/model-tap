@@ -83,6 +83,26 @@ final class ContentViewModel: ObservableObject {
         catch { show(error) }
     }
 
+    func markdownBackup() throws -> String {
+        try MarkdownBackupCodec.encode(repository.makeBackup())
+    }
+
+    func replaceAll(with backup: ModelTapBackup) {
+        do {
+            try repository.replaceAll(with: backup)
+            selectedProfile = nil
+            models = []
+            loadState = .idle
+            selectedModelID = nil
+            selectedSummary = nil
+            notice = RequestNotice(
+                message: "已导入\(backup.profiles.count)项配置"
+            )
+        } catch {
+            show(error)
+        }
+    }
+
     func discover() {
         guard let profile = selectedProfile else { return }
         requestTask?.cancel()
