@@ -2,7 +2,6 @@ import SwiftData
 import SwiftUI
 
 struct ProfileListView: View {
-    @Environment(\.openSettings) private var openSettings
     @Query(sort: \APIProfile.updatedAt, order: .reverse) private var profiles: [APIProfile]
     @Query(sort: \ProfileFolder.name) private var folders: [ProfileFolder]
     @Binding var selectedProfile: APIProfile?
@@ -88,25 +87,20 @@ struct ProfileListView: View {
                 }
             }
             ToolbarItem(placement: .automatic) {
-                Button("设置", systemImage: "gear") { openSettings() }
-                    .help("打开设置")
+                Button(
+                    "导入全量备份",
+                    systemImage: "square.and.arrow.down",
+                    action: onImportBackup
+                )
+                .help("导入Markdown全量备份")
             }
             ToolbarItem(placement: .automatic) {
-                Menu {
-                    Button(
-                        "导入全量备份",
-                        systemImage: "square.and.arrow.down",
-                        action: onImportBackup
-                    )
-                    Button(
-                        "导出全量备份",
-                        systemImage: "square.and.arrow.up",
-                        action: onExportBackup
-                    )
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down.circle")
-                }
-                .help("导入或导出Markdown全量备份")
+                Button(
+                    "导出全量备份",
+                    systemImage: "square.and.arrow.up",
+                    action: onExportBackup
+                )
+                .help("导出Markdown全量备份")
             }
         }
         .overlay {
