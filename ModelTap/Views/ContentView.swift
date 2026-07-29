@@ -45,7 +45,7 @@ struct ContentView: View {
         } detail: {
             detailView
         }
-        .navigationTitle("")
+        .navigationTitle("ModelTap")
         .frame(minWidth: 900, minHeight: 560)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
