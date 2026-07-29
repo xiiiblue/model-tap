@@ -68,7 +68,7 @@ struct ProfileEditorView: View {
                     }
                     fieldRow("备注（可选）") {
                         LeadingAlignedTextEditor(text: binding(\.notes, defaultValue: ""))
-                            .frame(minHeight: 28, maxHeight: 72)
+                            .frame(minHeight: 120, idealHeight: 140, maxHeight: 180)
                     }
                 }
                 Section {
@@ -102,9 +102,10 @@ struct ProfileEditorView: View {
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             Text(title)
                 .frame(width: 120, alignment: .leading)
+                .padding(.top, 3)
             content()
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -162,30 +163,46 @@ private struct LeadingAlignedTextEditor: NSViewRepresentable {
         Coordinator(self)
     }
 
-    func makeNSView(context: Context) -> NSTextView {
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+
         let textView = NSTextView()
         textView.alignment = .left
         textView.isRichText = false
         textView.isEditable = true
         textView.isSelectable = true
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
         textView.drawsBackground = false
         textView.focusRingType = .none
-        textView.textContainerInset = NSSize(width: 0, height: 4)
-        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainerInset = NSSize(width: 0, height: 6)
+        textView.textContainer?.lineFragmentPadding = 2
         textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: 0,
+            height: CGFloat.greatestFiniteMagnitude
+        )
         textView.delegate = context.coordinator
-        return textView
+        scrollView.documentView = textView
+        return scrollView
     }
 
-    func updateNSView(_ nsView: NSTextView, context: Context) {
-        if nsView.string != text {
-            nsView.string = text
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        guard let textView = nsView.documentView as? NSTextView else { return }
+        context.coordinator.parent = self
+        if textView.string != text {
+            textView.string = text
         }
-        nsView.alignment = .left
+        textView.alignment = .left
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
-        private var parent: LeadingAlignedTextEditor
+        var parent: LeadingAlignedTextEditor
 
         init(_ parent: LeadingAlignedTextEditor) {
             self.parent = parent

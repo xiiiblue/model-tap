@@ -50,7 +50,6 @@ final class ContentViewModel: ObservableObject {
             let profile = try repository.saveProfile(profile: editor.profile, name: editor.name, baseURL: editor.baseURL, apiKey: editor.apiKey, apiFormat: editor.apiFormat, folderID: editor.folderID, notes: editor.notes)
             selectedProfile = profile
             self.editor = nil
-            notice = RequestNotice(message: "配置已保存")
         } catch { show(error) }
     }
 

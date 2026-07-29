@@ -39,6 +39,7 @@ struct ContentView: View {
         } detail: {
             detailView
         }
+        .navigationTitle("")
         .frame(minWidth: 900, minHeight: 560)
         .sheet(item: $viewModel.editor) { _ in ProfileEditorView(editor: $viewModel.editor, onSave: viewModel.saveEditor) }
         .alert(item: $viewModel.notice) { notice in Alert(title: Text(notice.message)) }
