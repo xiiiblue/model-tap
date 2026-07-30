@@ -34,7 +34,7 @@ xcodebuild -project ModelTap.xcodeproj -scheme ModelTap -configuration Debug -sd
 
 ## 图标与发布打包
 
-- 主应用图标统一以`ModelTap/Assets.xcassets/AppIcon.appiconset/`为唯一生效来源，保持各尺寸图标的原始比例；应用启动时从Bundle中的`AppIcon.icns`明确设置运行时图标，供Dock和台前调度读取。仓库中的`ModelTap/AppIcon.icon/`是未参与构建的历史尝试，不得重新加入Target；如将来重做Icon Composer资源，必须使用分层且留有安全边距的前景素材，并在替换前验证16×16、32×32、Dock和台前调度效果。
+- 主应用图标统一以`ModelTap/Assets.xcassets/AppIcon.appiconset/`为唯一生效来源，保持各尺寸图标的原始比例；应用启动时从Bundle中的`AppIcon.icns`明确设置运行时图标，供Dock和台前调度读取。仓库中的`ModelTap/AppIcon.icon/`是未参与构建的历史尝试，不得重新加入Target；如将来重做Icon Composer资源，必须使用分层且留有安全边距的前景素材，并在替换前验证16×16、32×32、Dock和台前调度效果。当前图标主体按画布约82%的安全区居中，外围保留透明边距；所有PNG四角的Alpha值必须为0，不得把黑色或其他底色烘焙进透明区域，否则Dock会显示黑角且视觉尺寸大于系统图标。
 - UniversalRelease构建命令：
 
 ```bash
