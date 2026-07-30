@@ -44,8 +44,7 @@ struct ContentView: View {
                 onRenameFolder: viewModel.renameFolder,
                 onDeleteFolder: viewModel.deleteFolder,
                 onMoveProfile: viewModel.move,
-                onReorderProfile: viewModel.reorder,
-                onReorderFolder: viewModel.reorder
+                onApplySort: viewModel.applySidebarSort
             )
                 .navigationSplitViewColumnWidth(min: 240, ideal: 280)
         } detail: {
@@ -85,7 +84,7 @@ struct ContentView: View {
             ProfileEditorView(
                 editor: $viewModel.editor,
                 onSave: {
-                    viewModel.saveEditor()
+                    try viewModel.saveEditor()
                     loadSelectedAPIKey()
                 }
             )
@@ -158,16 +157,13 @@ struct ContentView: View {
                         },
                         onCopyURL: { copyURL(profile) },
                         onCopyKey: { copyKey(profile) },
-                        onCopyEnvironment: { copyEnvironment(profile) }
+                        onCopyEnvironment: { copyEnvironment(profile) },
+                        onCopyNotes: { copyNotes(profile) }
                     )
 
                     Divider()
 
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("模型与测试")
-                            .font(.headline)
-                        modelWorkspace
-                    }
+                    modelWorkspace
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -185,15 +181,11 @@ struct ContentView: View {
     private var modelWorkspace: some View {
         VStack(spacing: 0) {
             HStack {
-                Label(
-                    viewModel.selectedProfile?.testStatus.title ?? "未测试",
-                    systemImage: testStatusIcon
-                )
-                .foregroundStyle(testStatusColor)
+                Text("模型与测试")
+                    .font(.headline)
                 Spacer()
                 modelActionButtons
             }
-            .padding(.horizontal)
             .padding(.vertical, 10)
 
             Divider()
@@ -201,11 +193,6 @@ struct ContentView: View {
                 viewModel: viewModel,
                 onManualInput: presentManualModelPopover
             )
-            if let summary = viewModel.selectedSummary {
-                Divider()
-                TestDetailView(summary: summary)
-                    .frame(height: 190, alignment: .topLeading)
-            }
         }
     }
 
@@ -249,22 +236,6 @@ struct ContentView: View {
             arrowEdge: .top
         ) {
             manualModelPopover
-        }
-    }
-
-    private var testStatusIcon: String {
-        switch viewModel.selectedProfile?.testStatus {
-        case .success: "checkmark.circle.fill"
-        case .failure: "xmark.circle.fill"
-        default: "questionmark.circle"
-        }
-    }
-
-    private var testStatusColor: Color {
-        switch viewModel.selectedProfile?.testStatus {
-        case .success: .green
-        case .failure: .red
-        default: .secondary
         }
     }
 
@@ -344,6 +315,11 @@ struct ContentView: View {
         } catch {
             show(error)
         }
+    }
+
+    private func copyNotes(_ profile: APIProfile) {
+        Clipboard.copy(profile.notes)
+        viewModel.showToast("备注已复制")
     }
 
     private func loadSelectedAPIKey() {
@@ -442,6 +418,7 @@ private struct ConnectionOverview: View {
     let onCopyURL: () -> Void
     let onCopyKey: () -> Void
     let onCopyEnvironment: () -> Void
+    let onCopyNotes: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -525,20 +502,29 @@ private struct ConnectionOverview: View {
                 .foregroundStyle(value == "未设置" ? Color.secondary : Color.primary)
                 .lineLimit(1)
                 .truncationMode(.middle)
-                .textSelection(.enabled)
-            Spacer(minLength: 12)
-            if isSensitive, let onToggleVisibility {
-                Button(action: onToggleVisibility) {
-                    Image(systemName: isRevealed ? "eye.slash" : "eye")
+                .frame(
+                    minWidth: 0,
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
+                .clipped()
+                .layoutPriority(-1)
+            HStack(spacing: 12) {
+                if isSensitive, let onToggleVisibility {
+                    Button(action: onToggleVisibility) {
+                        Image(systemName: isRevealed ? "eye.slash" : "eye")
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(!hasAPIKey)
+                    .help(isRevealed ? "隐藏API Key" : "显示API Key")
+                    .accessibilityLabel(isRevealed ? "隐藏API Key" : "显示API Key")
                 }
-                .buttonStyle(.borderless)
-                .disabled(!hasAPIKey)
-                .help(isRevealed ? "隐藏API Key" : "显示API Key")
-                .accessibilityLabel(isRevealed ? "隐藏API Key" : "显示API Key")
+                Button("复制", systemImage: "doc.on.doc", action: onCopy)
+                    .buttonStyle(.borderless)
+                    .disabled(isSensitive && !hasAPIKey)
             }
-            Button("复制", systemImage: "doc.on.doc", action: onCopy)
-                .buttonStyle(.borderless)
-                .disabled(isSensitive && !hasAPIKey)
+            .fixedSize(horizontal: true, vertical: false)
+            .layoutPriority(1)
         }
         .padding(.horizontal, 16)
         .frame(minHeight: 58)
@@ -553,7 +539,7 @@ private struct ConnectionOverview: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 12)
-            Button("复制", systemImage: "curlybraces", action: onCopyEnvironment)
+            Button("复制", systemImage: "doc.on.doc", action: onCopyEnvironment)
                 .buttonStyle(.borderless)
         }
         .padding(.horizontal, 16)
@@ -572,6 +558,9 @@ private struct ConnectionOverview: View {
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 12)
+            Button("复制", systemImage: "doc.on.doc", action: onCopyNotes)
+                .buttonStyle(.borderless)
+                .disabled(notes.isEmpty)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 18)

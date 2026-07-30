@@ -1,11 +1,17 @@
 import SwiftUI
 import SwiftData
+import AppKit
 
 @main
 struct ModelTapApp: App {
     private let storeState: StoreState
 
     init() {
+        if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "icns"),
+           let iconImage = NSImage(contentsOf: iconURL) {
+            NSApplication.shared.applicationIconImage = iconImage
+        }
+
         do {
             storeState = .ready(
                 try PersistentStoreBootstrap.makeContainer()

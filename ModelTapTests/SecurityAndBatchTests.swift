@@ -26,31 +26,16 @@ final class SecurityAndBatchTests: XCTestCase {
     }
 
     func testLocalAPIKeyCipherRoundTrip() throws {
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent(UUID().uuidString, isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: directory) }
+        let keyStore = TestMasterKeyStore()
         let cipher = LocalAPIKeyCipher(
-            keyURL: directory.appendingPathComponent("local-encryption.key")
+            masterKeyStore: keyStore
         )
 
         let encrypted = try cipher.encrypt("sk-fake")
 
         XCTAssertNotEqual(encrypted, Data("sk-fake".utf8))
         XCTAssertEqual(try cipher.decrypt(encrypted), "sk-fake")
-        let directoryPermissions = try FileManager.default.attributesOfItem(
-            atPath: directory.path
-        )[.posixPermissions] as? NSNumber
-        let keyPermissions = try FileManager.default.attributesOfItem(
-            atPath: directory.appendingPathComponent("local-encryption.key").path
-        )[.posixPermissions] as? NSNumber
-        XCTAssertEqual(
-            directoryPermissions.map { $0.intValue & 0o777 },
-            0o700
-        )
-        XCTAssertEqual(
-            keyPermissions.map { $0.intValue & 0o777 },
-            0o600
-        )
+        XCTAssertEqual(keyStore.data?.count, 32)
     }
 
     @MainActor func testRepositoryStoresEncryptedAPIKey() throws {
@@ -79,7 +64,6 @@ final class SecurityAndBatchTests: XCTestCase {
 
         XCTAssertEqual(try repository.apiKey(for: profile), "sk-fake")
         XCTAssertEqual(profile.encryptedAPIKey, Data("encrypted:sk-fake".utf8))
-        XCTAssertNil(profile.keychainReference)
         XCTAssertEqual(profile.folderID, folder.id)
 
         try repository.addManualModel("gpt-manual", to: profile)
@@ -505,6 +489,18 @@ private struct TestAPIKeyCipher: APIKeyEncrypting {
     func decrypt(_ data: Data) throws -> String {
         String(decoding: data, as: UTF8.self)
             .replacingOccurrences(of: "encrypted:", with: "")
+    }
+}
+
+private final class TestMasterKeyStore: MasterKeyStoring {
+    var data: Data?
+
+    func load() throws -> Data? {
+        data
+    }
+
+    func save(_ data: Data) throws {
+        self.data = data
     }
 }
 

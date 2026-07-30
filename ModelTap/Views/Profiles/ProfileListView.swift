@@ -17,14 +17,16 @@ struct ProfileListView: View {
     let onRenameFolder: (ProfileFolder, String) -> Void
     let onDeleteFolder: (ProfileFolder) -> Void
     let onMoveProfile: (APIProfile, ProfileFolder?) -> Void
-    let onReorderProfile: (APIProfile, APIProfile, Bool) -> Void
-    let onReorderFolder: (ProfileFolder, ProfileFolder, Bool) -> Void
+    let onApplySort: (SidebarSortSnapshot) -> Bool
 
     @State private var collapsedFolderIDs: Set<UUID> = []
     @State private var isUnfiledCollapsed = false
     @State private var folderEditor: FolderEditorState?
     @State private var pendingDeleteFolder: ProfileFolder?
     @State private var pendingDeleteProfiles: [APIProfile] = []
+    @State private var isSorting = false
+    @State private var sortSections: [SidebarSortSection] = []
+    @State private var sortDropTarget: SidebarSortDropTarget?
 
     private var visibleFolders: [ProfileFolder] {
         orderedFolders.filter {
@@ -44,50 +46,61 @@ struct ProfileListView: View {
     }
 
     var body: some View {
-        List(selection: $selectedProfile) {
-            ForEach(visibleFolders) { folder in
-                folderRow(folder)
-                if expansionBinding(for: folder).wrappedValue {
-                    ForEach(displayedProfiles(in: folder)) { profile in
-                        profileRow(profile)
-                    }
-                    .onDelete { offsets in
-                        let values = displayedProfiles(in: folder)
-                        pendingDeleteProfiles = offsets.map { values[$0] }
-                    }
-                }
+        Group {
+            if isSorting {
+                sortingList
+            } else {
+                standardList
             }
-
-            if searchText.isEmpty || !unfiledProfiles.isEmpty {
-                unfiledFolderRow
-                if unfiledExpansionBinding.wrappedValue {
-                    ForEach(unfiledProfiles) { profile in
-                        profileRow(profile)
-                    }
-                    .onDelete { offsets in
-                        pendingDeleteProfiles = offsets.map {
-                            unfiledProfiles[$0]
+        }
+        .toolbar {
+            if isSorting {
+                ToolbarItem(placement: .primaryAction) {
+                    if #available(macOS 26.0, *) {
+                        Button("取消", systemImage: "xmark") {
+                            cancelSorting()
+                        }
+                        .buttonStyle(.glass)
+                    } else {
+                        Button("取消", systemImage: "xmark") {
+                            cancelSorting()
                         }
                     }
                 }
-            }
-        }
-        .listStyle(.sidebar)
-        .listRowSeparator(.hidden)
-        .searchable(text: $searchText, placement: .sidebar, prompt: "搜索配置或文件夹")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("新增配置", systemImage: "plus", action: onNew)
-                    .help("Command-N")
-            }
-            ToolbarItem(placement: .primaryAction) {
-                Button("新建文件夹", systemImage: "folder.badge.plus") {
-                    folderEditor = FolderEditorState(folder: nil, name: "")
+                ToolbarItem(placement: .primaryAction) {
+                    if #available(macOS 26.0, *) {
+                        Button("完成", systemImage: "checkmark") {
+                            finishSorting()
+                        }
+                        .buttonStyle(.glassProminent)
+                        .keyboardShortcut(.defaultAction)
+                    } else {
+                        Button("完成", systemImage: "checkmark") {
+                            finishSorting()
+                        }
+                        .keyboardShortcut(.defaultAction)
+                    }
+                }
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("新增配置", systemImage: "plus", action: onNew)
+                        .help("Command-N")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("新建文件夹", systemImage: "folder.badge.plus") {
+                        folderEditor = FolderEditorState(folder: nil, name: "")
+                    }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button("排序", systemImage: "arrow.up.arrow.down") {
+                        startSorting()
+                    }
+                    .disabled(profiles.isEmpty && folders.count < 2)
                 }
             }
         }
         .overlay {
-            if profiles.isEmpty && folders.isEmpty {
+            if !isSorting && profiles.isEmpty && folders.isEmpty {
                 ContentUnavailableView(
                     "还没有配置",
                     systemImage: "externaldrive.badge.plus",
@@ -149,6 +162,394 @@ struct ProfileListView: View {
         } message: {
             Text("配置、API Key和相关测试记录将被删除，此操作无法撤销。")
         }
+    }
+
+    private var standardList: some View {
+        List(selection: $selectedProfile) {
+            ForEach(visibleFolders) { folder in
+                folderRow(folder)
+                if expansionBinding(for: folder).wrappedValue {
+                    ForEach(displayedProfiles(in: folder)) { profile in
+                        profileRow(profile)
+                    }
+                    .onDelete { offsets in
+                        let values = displayedProfiles(in: folder)
+                        pendingDeleteProfiles = offsets.map { values[$0] }
+                    }
+                }
+            }
+
+            if searchText.isEmpty || !unfiledProfiles.isEmpty {
+                unfiledFolderRow
+                if unfiledExpansionBinding.wrappedValue {
+                    ForEach(unfiledProfiles) { profile in
+                        profileRow(profile)
+                    }
+                    .onDelete { offsets in
+                        pendingDeleteProfiles = offsets.map {
+                            unfiledProfiles[$0]
+                        }
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .listRowSeparator(.hidden)
+        .searchable(text: $searchText, placement: .sidebar, prompt: "搜索配置或文件夹")
+    }
+
+    private var sortingList: some View {
+        List {
+            ForEach(sortSections) { section in
+                sortingSectionHeader(section)
+
+                ForEach(section.profileIDs, id: \.self) { profileID in
+                    if let profile = profiles.first(where: {
+                        $0.id == profileID
+                    }) {
+                        sortingProfileRow(profile, in: section.id)
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .listRowSeparator(.hidden)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            sortingHint
+                .padding(.horizontal, 8)
+                .padding(.vertical, 8)
+        }
+        .onExitCommand {
+            cancelSorting()
+        }
+    }
+
+    @ViewBuilder
+    private var sortingHint: some View {
+        if #available(macOS 26.0, *) {
+            sortingHintLabel
+                .glassEffect(
+                    .regular,
+                    in: .rect(cornerRadius: 12)
+                )
+        } else {
+            sortingHintLabel
+                .background(
+                    .regularMaterial,
+                    in: RoundedRectangle(
+                        cornerRadius: 12,
+                        style: .continuous
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(
+                        cornerRadius: 12,
+                        style: .continuous
+                    )
+                    .strokeBorder(Color.primary.opacity(0.08))
+                }
+        }
+    }
+
+    private var sortingHintLabel: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "arrow.up.arrow.down")
+            Text("拖动整行调整顺序或移动配置")
+            Spacer(minLength: 0)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func sortingSectionHeader(
+        _ section: SidebarSortSection
+    ) -> some View {
+        if let folderID = section.folderID {
+            SidebarSortingFolderRow(title: section.title)
+                .padding(.horizontal, 8)
+                .background {
+                    sortingDropBackground(for: .section(section.id))
+                }
+                .listRowInsets(
+                    EdgeInsets(top: 7, leading: 10, bottom: 2, trailing: 8)
+                )
+                .listRowBackground(Color.clear)
+                .draggable(
+                    SidebarSortDragItem.folder(folderID).encoded
+                ) {
+                    SidebarSortDragPreview(
+                        systemImage: "folder",
+                        title: section.title
+                    )
+                }
+                .dropDestination(for: String.self) { values, location in
+                    performSortDrop(
+                        values,
+                        on: section.id,
+                        location: location
+                    )
+                } isTargeted: { isTargeted in
+                    updateSortDropTarget(
+                        .section(section.id),
+                        isTargeted: isTargeted
+                    )
+                }
+        } else {
+            SidebarSortingFolderRow(title: section.title)
+                .padding(.horizontal, 8)
+                .background {
+                    sortingDropBackground(for: .section(section.id))
+                }
+                .listRowInsets(
+                    EdgeInsets(top: 7, leading: 10, bottom: 2, trailing: 8)
+                )
+                .listRowBackground(Color.clear)
+                .dropDestination(for: String.self) { values, location in
+                    performSortDrop(
+                        values,
+                        on: section.id,
+                        location: location
+                    )
+                } isTargeted: { isTargeted in
+                    updateSortDropTarget(
+                        .section(section.id),
+                        isTargeted: isTargeted
+                    )
+                }
+        }
+    }
+
+    private func sortingProfileRow(
+        _ profile: APIProfile,
+        in sectionID: SidebarSortGroupID
+    ) -> some View {
+        SidebarSortingProfileRow(title: profile.name)
+            .padding(.horizontal, 8)
+            .background {
+                sortingDropBackground(for: .profile(profile.id))
+            }
+            .listRowInsets(
+                EdgeInsets(top: 1, leading: 30, bottom: 1, trailing: 8)
+            )
+            .listRowBackground(Color.clear)
+            .draggable(
+                SidebarSortDragItem.profile(profile.id).encoded
+            ) {
+                SidebarSortDragPreview(
+                    systemImage: "link",
+                    title: profile.name
+                )
+            }
+            .dropDestination(for: String.self) { values, location in
+                performSortDrop(
+                    values,
+                    relativeTo: profile.id,
+                    in: sectionID,
+                    location: location
+                )
+            } isTargeted: { isTargeted in
+                updateSortDropTarget(
+                    .profile(profile.id),
+                    isTargeted: isTargeted
+                )
+            }
+    }
+
+    private func sortingDropBackground(
+        for target: SidebarSortDropTarget
+    ) -> some View {
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(Color.accentColor.opacity(0.12))
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(Color.accentColor.opacity(0.45), lineWidth: 1)
+            }
+            .opacity(sortDropTarget == target ? 1 : 0)
+            .animation(.easeInOut(duration: 0.12), value: sortDropTarget)
+    }
+
+    private func startSorting() {
+        searchText = ""
+        let folderIDs = Set(folders.map(\.id))
+        let sections = orderedFolders.map { folder in
+            SidebarSortSection(
+                id: .folder(folder.id),
+                title: folder.name,
+                profileIDs: orderedProfiles
+                    .filter { $0.folderID == folder.id }
+                    .map(\.id)
+            )
+        }
+        let unfiled = SidebarSortSection(
+            id: .unfiled,
+            title: "未分类",
+            profileIDs: orderedProfiles
+                .filter {
+                    guard let folderID = $0.folderID else { return true }
+                    return !folderIDs.contains(folderID)
+                }
+                .map(\.id)
+        )
+        sortSections = sections + [unfiled]
+        sortDropTarget = nil
+        isSorting = true
+    }
+
+    private func cancelSorting() {
+        sortDropTarget = nil
+        sortSections = []
+        isSorting = false
+    }
+
+    private func finishSorting() {
+        let snapshot = SidebarSortSnapshot(
+            folderIDs: sortSections.compactMap(\.folderID),
+            groups: sortSections.map {
+                SidebarProfileSortGroup(
+                    folderID: $0.folderID,
+                    profileIDs: $0.profileIDs
+                )
+            }
+        )
+        guard onApplySort(snapshot) else { return }
+        cancelSorting()
+    }
+
+    private func updateSortDropTarget(
+        _ target: SidebarSortDropTarget,
+        isTargeted: Bool
+    ) {
+        if isTargeted {
+            sortDropTarget = target
+        } else if sortDropTarget == target {
+            sortDropTarget = nil
+        }
+    }
+
+    private func performSortDrop(
+        _ values: [String],
+        on sectionID: SidebarSortGroupID,
+        location: CGPoint
+    ) -> Bool {
+        guard let value = values.first,
+              let item = SidebarSortDragItem(encoded: value) else {
+            return false
+        }
+        sortDropTarget = nil
+        switch item {
+        case .folder(let folderID):
+            guard case .folder(let targetFolderID) = sectionID else {
+                return false
+            }
+            return moveSortFolder(
+                folderID,
+                relativeTo: targetFolderID,
+                placeAfter: location.y > 14
+            )
+        case .profile(let profileID):
+            return moveSortProfile(profileID, to: sectionID)
+        }
+    }
+
+    private func performSortDrop(
+        _ values: [String],
+        relativeTo targetProfileID: UUID,
+        in sectionID: SidebarSortGroupID,
+        location: CGPoint
+    ) -> Bool {
+        guard let value = values.first,
+              let item = SidebarSortDragItem(encoded: value),
+              case .profile(let profileID) = item else {
+            return false
+        }
+        sortDropTarget = nil
+        return moveSortProfile(
+            profileID,
+            relativeTo: targetProfileID,
+            in: sectionID,
+            placeAfter: location.y > 18
+        )
+    }
+
+    private func moveSortFolder(
+        _ folderID: UUID,
+        relativeTo targetFolderID: UUID,
+        placeAfter: Bool
+    ) -> Bool {
+        guard folderID != targetFolderID,
+              let sourceIndex = sortSections.firstIndex(where: {
+                  $0.folderID == folderID
+              }) else {
+            return false
+        }
+        var updated = sortSections
+        let movingSection = updated.remove(at: sourceIndex)
+        guard let targetIndex = updated.firstIndex(where: {
+            $0.folderID == targetFolderID
+        }) else {
+            return false
+        }
+        updated.insert(
+            movingSection,
+            at: placeAfter ? targetIndex + 1 : targetIndex
+        )
+        sortSections = updated
+        return true
+    }
+
+    private func moveSortProfile(
+        _ profileID: UUID,
+        to sectionID: SidebarSortGroupID
+    ) -> Bool {
+        var updated = sortSections
+        guard updated.contains(where: {
+            $0.profileIDs.contains(profileID)
+        }), let targetIndex = updated.firstIndex(where: {
+            $0.id == sectionID
+        }) else {
+            return false
+        }
+        for index in updated.indices {
+            updated[index].profileIDs.removeAll { $0 == profileID }
+        }
+        updated[targetIndex].profileIDs.append(profileID)
+        sortSections = updated
+        return true
+    }
+
+    private func moveSortProfile(
+        _ profileID: UUID,
+        relativeTo targetProfileID: UUID,
+        in sectionID: SidebarSortGroupID,
+        placeAfter: Bool
+    ) -> Bool {
+        guard profileID != targetProfileID else { return false }
+        var updated = sortSections
+        guard updated.contains(where: {
+            $0.profileIDs.contains(profileID)
+        }) else {
+            return false
+        }
+        for index in updated.indices {
+            updated[index].profileIDs.removeAll { $0 == profileID }
+        }
+        guard let sectionIndex = updated.firstIndex(where: {
+            $0.id == sectionID
+        }), let targetIndex = updated[sectionIndex].profileIDs.firstIndex(
+            of: targetProfileID
+        ) else {
+            return false
+        }
+        updated[sectionIndex].profileIDs.insert(
+            profileID,
+            at: placeAfter ? targetIndex + 1 : targetIndex
+        )
+        sortSections = updated
+        return true
     }
 
     private func displayedProfiles(in folder: ProfileFolder) -> [APIProfile] {
@@ -232,14 +633,6 @@ struct ProfileListView: View {
             .buttonStyle(.plain)
             .listRowInsets(EdgeInsets(top: 7, leading: 10, bottom: 2, trailing: 8))
             .listRowBackground(Color.clear)
-            .draggable(SidebarDragItem.folder(folder.id).encoded)
-            .dropDestination(for: String.self) { values, location in
-                handleDrop(
-                    values,
-                    on: folder,
-                    placeAfter: location.y > 14
-                )
-            }
             .contextMenu {
                 Button("重命名", systemImage: "pencil") {
                     folderEditor = FolderEditorState(folder: folder, name: folder.name)
@@ -262,75 +655,13 @@ struct ProfileListView: View {
         .buttonStyle(.plain)
         .listRowInsets(EdgeInsets(top: 7, leading: 10, bottom: 2, trailing: 8))
         .listRowBackground(Color.clear)
-        .dropDestination(for: String.self) { values, _ in
-            moveProfiles(values, to: nil)
-        }
     }
 
     private func profileRow(_ profile: APIProfile) -> some View {
         ProfileRow(profile: profile)
             .tag(profile)
             .listRowInsets(EdgeInsets(top: 1, leading: 30, bottom: 1, trailing: 8))
-            .draggable(SidebarDragItem.profile(profile.id).encoded)
-            .dropDestination(for: String.self) { values, location in
-                reorderProfiles(
-                    values,
-                    relativeTo: profile,
-                    placeAfter: location.y > 21
-                )
-            }
             .contextMenu { profileMenu(profile) }
-    }
-
-    private func moveProfiles(_ values: [String], to folder: ProfileFolder?) -> Bool {
-        let ids: Set<UUID> = Set(values.compactMap { value -> UUID? in
-            guard let item = SidebarDragItem(encoded: value),
-                  case .profile(let id) = item else {
-                return nil
-            }
-            return id
-        })
-        let movingProfiles = profiles.filter { ids.contains($0.id) }
-        movingProfiles.forEach { onMoveProfile($0, folder) }
-        return !movingProfiles.isEmpty
-    }
-
-    private func reorderProfiles(
-        _ values: [String],
-        relativeTo target: APIProfile,
-        placeAfter: Bool
-    ) -> Bool {
-        guard let movingID = values.compactMap({ value -> UUID? in
-            guard let item = SidebarDragItem(encoded: value),
-                  case .profile(let id) = item else {
-                return nil
-            }
-            return id
-        }).first,
-        let movingProfile = profiles.first(where: { $0.id == movingID }) else {
-            return false
-        }
-        onReorderProfile(movingProfile, target, placeAfter)
-        return true
-    }
-
-    private func handleDrop(
-        _ values: [String],
-        on target: ProfileFolder,
-        placeAfter: Bool
-    ) -> Bool {
-        if let movingID = values.compactMap({ value -> UUID? in
-            guard let item = SidebarDragItem(encoded: value),
-                  case .folder(let id) = item else {
-                return nil
-            }
-            return id
-        }).first,
-        let movingFolder = folders.first(where: { $0.id == movingID }) {
-            onReorderFolder(movingFolder, target, placeAfter)
-            return true
-        }
-        return moveProfiles(values, to: target)
     }
 
     @ViewBuilder
@@ -360,27 +691,117 @@ struct ProfileListView: View {
     }
 }
 
-private enum SidebarDragItem {
-    case profile(UUID)
+private enum SidebarSortGroupID: Hashable {
     case folder(UUID)
+    case unfiled
+}
+
+private struct SidebarSortSection: Identifiable {
+    let id: SidebarSortGroupID
+    let title: String
+    var profileIDs: [UUID]
+
+    var folderID: UUID? {
+        guard case .folder(let folderID) = self.id else { return nil }
+        return folderID
+    }
+}
+
+private enum SidebarSortDragItem {
+    case folder(UUID)
+    case profile(UUID)
 
     init?(encoded: String) {
-        let parts = encoded.split(separator: ":", maxSplits: 1).map(String.init)
-        guard parts.count == 2, let id = UUID(uuidString: parts[1]) else {
+        let components = encoded.split(
+            separator: ":",
+            maxSplits: 1
+        )
+        guard components.count == 2,
+              let id = UUID(uuidString: String(components[1])) else {
             return nil
         }
-        switch parts[0] {
-        case "profile": self = .profile(id)
-        case "folder": self = .folder(id)
-        default: return nil
+        switch components[0] {
+        case "folder":
+            self = .folder(id)
+        case "profile":
+            self = .profile(id)
+        default:
+            return nil
         }
     }
 
     var encoded: String {
         switch self {
-        case .profile(let id): "profile:\(id.uuidString)"
-        case .folder(let id): "folder:\(id.uuidString)"
+        case .folder(let id):
+            "folder:\(id.uuidString)"
+        case .profile(let id):
+            "profile:\(id.uuidString)"
         }
+    }
+}
+
+private enum SidebarSortDropTarget: Equatable {
+    case section(SidebarSortGroupID)
+    case profile(UUID)
+}
+
+private struct SidebarSortingFolderRow: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "folder")
+                .font(.body)
+                .symbolRenderingMode(.hierarchical)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct SidebarSortingProfileRow: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "link")
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            Image(systemName: "line.3.horizontal")
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct SidebarSortDragPreview: View {
+    let systemImage: String
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 36)
+        .background(
+            .regularMaterial,
+            in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+        )
     }
 }
 

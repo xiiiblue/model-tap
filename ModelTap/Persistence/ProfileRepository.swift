@@ -60,7 +60,6 @@ final class ProfileRepository {
             )
         }
         savedProfile.encryptedAPIKey = encryptedAPIKey
-        savedProfile.keychainReference = nil
         savedProfile.name = name
         savedProfile.baseURL = baseURL
         savedProfile.apiFormat = apiFormat
@@ -208,6 +207,75 @@ final class ProfileRepository {
         try saveChanges()
     }
 
+    func applySidebarSort(_ snapshot: SidebarSortSnapshot) throws {
+        let allFolders = try modelContext.fetch(FetchDescriptor<ProfileFolder>())
+        let folderByID = Dictionary(uniqueKeysWithValues: allFolders.map {
+            ($0.id, $0)
+        })
+        let requestedFolderIDs = snapshot.folderIDs.filter {
+            folderByID[$0] != nil
+        }
+        let requestedFolderIDSet = Set(requestedFolderIDs)
+        let remainingFolders = allFolders
+            .filter { !requestedFolderIDSet.contains($0.id) }
+            .sorted {
+                if $0.sortOrder != $1.sortOrder {
+                    return $0.sortOrder < $1.sortOrder
+                }
+                return $0.name.localizedStandardCompare($1.name)
+                    == .orderedAscending
+            }
+        for (index, folderID) in (
+            requestedFolderIDs + remainingFolders.map(\.id)
+        ).enumerated() {
+            guard let folder = folderByID[folderID] else { continue }
+            folder.sortOrder = index
+            folder.updatedAt = .now
+        }
+
+        let allProfiles = try modelContext.fetch(FetchDescriptor<APIProfile>())
+        let profileByID = Dictionary(uniqueKeysWithValues: allProfiles.map {
+            ($0.id, $0)
+        })
+        var assignedProfileIDs: Set<UUID> = []
+        for group in snapshot.groups {
+            let validFolderID = group.folderID.flatMap { folderByID[$0]?.id }
+            var nextOrder = 0
+            for profileID in group.profileIDs {
+                guard !assignedProfileIDs.contains(profileID),
+                      let profile = profileByID[profileID] else {
+                    continue
+                }
+                profile.folderID = validFolderID
+                profile.sortOrder = nextOrder
+                profile.updatedAt = .now
+                assignedProfileIDs.insert(profileID)
+                nextOrder += 1
+            }
+        }
+
+        let remainingProfiles = allProfiles.filter {
+            !assignedProfileIDs.contains($0.id)
+        }
+        let remainingFolderIDs = Set(remainingProfiles.map(\.folderID))
+        for folderID in remainingFolderIDs {
+            let existingCount = assignedProfileIDs.reduce(into: 0) {
+                partialResult,
+                profileID in
+                if profileByID[profileID]?.folderID == folderID {
+                    partialResult += 1
+                }
+            }
+            let values = remainingProfiles
+                .filter { $0.folderID == folderID }
+                .sorted(by: profileComesBefore)
+            for (offset, profile) in values.enumerated() {
+                profile.sortOrder = existingCount + offset
+            }
+        }
+        try saveChanges()
+    }
+
     func migrateLegacyCategories() throws {
         let profiles = try modelContext.fetch(FetchDescriptor<APIProfile>())
         let legacyProfiles = profiles.filter {
@@ -350,7 +418,6 @@ final class ProfileRepository {
             profile.lastUsedAt = item.lastUsedAt
             profile.lastTestStatusRaw = item.lastTestStatus
             profile.encryptedAPIKey = encryptedKeys[item.id]
-            profile.keychainReference = nil
             profile.category = nil
             if profile.modelContext == nil {
                 modelContext.insert(profile)

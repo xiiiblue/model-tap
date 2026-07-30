@@ -6,13 +6,13 @@ ModelTap是一款使用SwiftUI和SwiftData编写的macOS原生LLM API管理工�
 
 ## 功能
 
-- 使用文件夹组织LLM API配置，并支持拖动排序和跨文件夹移动。
+- 使用文件夹组织LLM API配置；点击侧边栏“排序”进入独立排序模式，可调整文件夹和配置顺序，也可跨文件夹移动配置。
 - 一键复制Base URL、API Key和Shell环境变量。
 - 支持OpenAI Chat Completions、OpenAI Responses和Anthropic Messages。
 - 支持查询服务端模型，也可手动保存无法查询的模型ID。
 - 逐项测试模型接口；`gpt-image-*`模型使用`/images/generations`进行最小验证。
 - 使用便于Obsidian阅读的Markdown格式完整导入和导出配置。
-- 不使用macOS Keychain，不包含遥测、云同步或第三方依赖。
+- 使用macOS钥匙串保存本地主密钥，不包含遥测、云同步或第三方依赖。
 
 ## 系统要求
 
@@ -49,13 +49,13 @@ xcodebuild -project ModelTap.xcodeproj \
 应用数据只保存在当前macOS用户目录：
 
 - SwiftData数据库：`~/Library/Application Support/ModelTap/ModelTap.store`
-- 本地加密密钥：`~/Library/Application Support/ModelTap/local-encryption.key`
+- AES主密钥：macOS钥匙串中的`com.modeltap.app.local-encryption`条目
 
 旧版本曾使用`~/Library/Application Support/default.store`。首次运行新版时，如果该数据库可识别为ModelTap数据，应用会复制到独立目录；旧文件会保留，不会自动删除。
 
 ## 安全说明
 
-API Key使用AES-GCM加密后写入SwiftData，256位本地密钥与数据库分开保存，目录权限为`0700`，文件权限为`0600`。这种方案用于避免数据库明文，不提供macOS Keychain级别的安全隔离；能够读取当前用户应用数据的攻击者仍可能同时取得密文和密钥。
+API Key使用AES-GCM加密后写入SwiftData，256位主密钥优先保存于macOS数据保护钥匙串，使用`WhenUnlockedThisDeviceOnly`限制为当前设备解锁期间可访问。没有Apple开发者证书的adhoc构建不具备数据保护钥匙串所需的访问组权限，此时应用自动使用系统登录钥匙串保存同一主密钥。应用不为日常读取设置Touch ID、用户确认或密码提示，主密钥读取后仅在当前进程内缓存；系统安全存储不可访问时直接返回错误，不主动弹出认证窗口。
 
 API Key默认隐藏。复制API Key或包含API Key的环境变量时，ModelTap会把内容标记为临时、敏感剪贴板数据，并在剪贴板内容未被覆盖的情况下于60秒后清除。部分剪贴板管理器可能不遵循敏感标记。
 
@@ -68,9 +68,9 @@ Markdown备份包含明文API Key。请将备份保存在可信位置，不要�
 导出内容以文件夹为二级标题、配置为三级标题，适合直接放入Obsidian：
 
 ```markdown
-## 分类A
-### CPA阿里云
-BASE_URL: http://10.90.23.169:8317/v1
+## 中转站
+### OpenCode
+BASE_URL: https://opencode.ai/zen/go/v1
 API_KEY: sk-example
 API格式: OpenAI Chat Completions
 备注: 示例说明

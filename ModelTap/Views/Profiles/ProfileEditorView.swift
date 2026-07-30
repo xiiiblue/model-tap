@@ -6,47 +6,67 @@ struct ProfileEditorView: View {
     @Query(sort: \ProfileFolder.name) private var folders: [ProfileFolder]
     @Binding var editor: ProfileEditorState?
     @State private var isKeyVisible = false
-    let onSave: () -> Void
+    @State private var saveError: RequestNotice?
+    let onSave: () throws -> Void
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
+        VStack(spacing: 0) {
+            editorHeader
+            Divider()
+            ScrollView {
                 editorContent
                     .padding(.horizontal, 24)
-                    .padding(.vertical, 20)
-                Spacer(minLength: 0)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .navigationTitle(editor?.profile == nil ? "新增配置" : "编辑配置")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    if #available(macOS 26.0, *) {
-                        Button("取消") { editor = nil }
-                            .buttonStyle(.glass)
-                    } else {
-                        Button("取消") { editor = nil }
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    if #available(macOS 26.0, *) {
-                        Button("保存", action: onSave)
-                            .buttonStyle(.glassProminent)
-                            .keyboardShortcut(.defaultAction)
-                            .disabled(!canSave)
-                    } else {
-                        Button("保存", action: onSave)
-                            .keyboardShortcut(.defaultAction)
-                            .disabled(!canSave)
-                    }
-                }
-            }
+            .scrollIndicators(.hidden)
+            Divider()
+            editorActions
         }
         .frame(minWidth: 520, idealWidth: 560, minHeight: 590, idealHeight: 610)
+        .alert(item: $saveError) { notice in
+            Alert(title: Text(notice.message))
+        }
+    }
+
+    private var editorHeader: some View {
+        HStack {
+            Text(editor?.profile == nil ? "新增配置" : "编辑配置")
+                .font(.headline)
+            Spacer()
+        }
+        .padding(.horizontal, 28)
+        .frame(height: 50)
+        .background(.bar)
+    }
+
+    @ViewBuilder
+    private var editorActions: some View {
+        HStack(spacing: 10) {
+            Spacer()
+            if #available(macOS 26.0, *) {
+                Button("取消") { editor = nil }
+                    .buttonStyle(.glass)
+                Button("保存", action: attemptSave)
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canSave)
+            } else {
+                Button("取消") { editor = nil }
+                Button("保存", action: attemptSave)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canSave)
+            }
+        }
+        .padding(.horizontal, 20)
+        .frame(height: 58)
+        .background(.bar)
     }
 
     @ViewBuilder
     private var editorContent: some View {
         if #available(macOS 26.0, *) {
-            GlassEffectContainer(spacing: 22) {
+            GlassEffectContainer(spacing: 16) {
                 editorSections
             }
         } else {
@@ -55,7 +75,7 @@ struct ProfileEditorView: View {
     }
 
     private var editorSections: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 16) {
             editorSection("基本信息") {
                 VStack(spacing: 0) {
                     fieldRow("配置名称") {
@@ -153,9 +173,9 @@ struct ProfileEditorView: View {
                 LeadingAlignedTextEditor(
                     text: binding(\.notes, defaultValue: "")
                 )
-                .frame(height: 138)
+                .frame(height: 96)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .padding(.vertical, 6)
                 .accessibilityLabel("备注")
             }
         }
@@ -170,7 +190,7 @@ struct ProfileEditorView: View {
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.headline)
                 .padding(.leading, 4)
@@ -204,6 +224,16 @@ struct ProfileEditorView: View {
             && !editor.baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private func attemptSave() {
+        do {
+            try onSave()
+        } catch {
+            saveError = RequestNotice(
+                message: ContentViewModel.friendlyMessage(error)
+            )
+        }
+    }
+
     private func binding<T>(
         _ keyPath: WritableKeyPath<ProfileEditorState, T>,
         defaultValue: T
@@ -228,7 +258,7 @@ struct ProfileEditorView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
-        .frame(minHeight: 52)
+        .frame(minHeight: 48)
     }
 }
 

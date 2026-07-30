@@ -19,6 +19,8 @@
 
 ## 数据保护边界
 
-ModelTap不使用macOS Keychain。API Key通过本地AES-GCM加密保存，但数据库和加密密钥均属于同一macOS用户，不能抵御已经取得该用户文件读取权限的攻击者。
+ModelTap使用AES-GCM加密API Key，密文保存于SwiftData，256位主密钥优先保存于macOS数据保护钥匙串并限制为当前设备解锁期间可访问。没有Apple开发者证书的adhoc构建缺少数据保护钥匙串所需的访问组权限，会自动退回系统登录钥匙串。
+
+日常读取不设置Touch ID或每次访问确认，主密钥在应用进程内缓存。ModelTap无法抵御已经控制当前用户会话、能够向应用进程注入代码或读取进程内存的攻击者；Markdown备份和剪贴板仍可能包含API Key明文。
 
 Markdown导出包含明文API Key，应视为敏感文件。复制API Key时应用会请求剪贴板管理器将其视为敏感临时内容，但第三方剪贴板管理器可能忽略该标记。

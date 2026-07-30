@@ -14,6 +14,8 @@ struct ModelRowView: View {
             Text(model.id)
                 .font(.system(.body, design: .monospaced))
                 .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
             if isManual {
                 Text("手动")
                     .font(.caption2)
@@ -21,13 +23,23 @@ struct ModelRowView: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(.quaternary, in: Capsule())
+                    .fixedSize()
             }
-            Spacer()
+            trailingActions
+        }
+        .padding(.vertical, 5)
+    }
+
+    private var trailingActions: some View {
+        HStack(spacing: 12) {
             if let summary = model.latestTest {
-                Text(Formatters.duration(summary.duration)).foregroundStyle(.secondary).frame(width: 75, alignment: .trailing)
-                Text(summary.testedAt.modelTapTimestamp).foregroundStyle(.secondary).frame(width: 160, alignment: .trailing)
+                Text(Formatters.duration(summary.duration))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 75, alignment: .trailing)
             } else {
-                Text("—").foregroundStyle(.tertiary).frame(width: 220, alignment: .trailing)
+                Text("—")
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 75, alignment: .trailing)
             }
             Button("复制模型ID", systemImage: "doc.on.doc", action: onCopy)
                 .labelStyle(.iconOnly)
@@ -38,8 +50,10 @@ struct ModelRowView: View {
                 .labelStyle(.titleAndIcon)
                 .buttonStyle(.borderless)
                 .disabled(isTesting)
+                .fixedSize()
         }
-        .padding(.vertical, 5)
+        .fixedSize(horizontal: true, vertical: false)
+        .layoutPriority(1)
     }
 
     @ViewBuilder private var statusIcon: some View {
@@ -57,26 +71,10 @@ struct ModelRowView: View {
 }
 
 private struct LoadingStatusIcon: View {
-    @State private var rotation = 0.0
-
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.secondary.opacity(0.22), lineWidth: 2)
-            Circle()
-                .trim(from: 0.12, to: 0.78)
-                .stroke(
-                    Color.accentColor,
-                    style: StrokeStyle(lineWidth: 2, lineCap: .round)
-                )
-                .rotationEffect(.degrees(rotation))
-        }
-        .frame(width: 15, height: 15)
-        .accessibilityLabel("测试中")
-        .onAppear {
-            withAnimation(.linear(duration: 0.75).repeatForever(autoreverses: false)) {
-                rotation = 360
-            }
-        }
+        ProgressView()
+            .controlSize(.small)
+            .frame(width: 15, height: 15)
+            .accessibilityLabel("测试中")
     }
 }

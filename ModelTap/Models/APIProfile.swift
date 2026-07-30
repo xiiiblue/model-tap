@@ -40,8 +40,6 @@ final class APIProfile {
     var lastUsedAt: Date?
     var lastTestStatusRaw: String
     var encryptedAPIKey: Data?
-    // 仅为兼容旧版SwiftData结构保留；新代码不会访问macOS Keychain。
-    var keychainReference: String?
     var apiFormatRaw: String = APIFormat.openAI.rawValue
     var folderID: UUID?
     var manualModelIDsRaw: String = ""
@@ -59,7 +57,6 @@ final class APIProfile {
         self.lastUsedAt = nil
         self.lastTestStatusRaw = ProfileTestStatus.notTested.rawValue
         self.encryptedAPIKey = nil
-        self.keychainReference = nil
         self.apiFormatRaw = apiFormat.rawValue
         self.folderID = folderID
         self.manualModelIDsRaw = ""

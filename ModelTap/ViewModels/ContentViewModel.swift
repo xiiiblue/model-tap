@@ -11,6 +11,7 @@ final class ContentViewModel: ObservableObject {
     @Published var toast: RequestNotice?
     @Published var selectedModelID: String?
     @Published var selectedSummary: ModelTestSummary?
+    @Published var expandedTestModelID: String?
     @Published private(set) var testingModelIDs: Set<String> = []
     @Published var lastDiscovery: (count: Int, duration: TimeInterval, date: Date)?
     @Published var editor: ProfileEditorState?
@@ -47,6 +48,7 @@ final class ContentViewModel: ObservableObject {
         discoveredModelIDs.removeAll()
         selectedModelID = nil
         selectedSummary = nil
+        expandedTestModelID = nil
         lastDiscovery = nil
         guard let selectedProfile else {
             models = []
@@ -94,6 +96,9 @@ final class ContentViewModel: ObservableObject {
                 selectedModelID = nil
                 selectedSummary = nil
             }
+            if expandedTestModelID == modelID {
+                expandedTestModelID = nil
+            }
             if models.isEmpty {
                 loadState = .idle
             }
@@ -109,13 +114,11 @@ final class ContentViewModel: ObservableObject {
         catch { show(error) }
     }
 
-    func saveEditor() {
+    func saveEditor() throws {
         guard let editor else { return }
-        do {
-            let profile = try repository.saveProfile(profile: editor.profile, name: editor.name, baseURL: editor.baseURL, apiKey: editor.apiKey, apiFormat: editor.apiFormat, folderID: editor.folderID, notes: editor.notes)
-            selectedProfile = profile
-            self.editor = nil
-        } catch { show(error) }
+        let profile = try repository.saveProfile(profile: editor.profile, name: editor.name, baseURL: editor.baseURL, apiKey: editor.apiKey, apiFormat: editor.apiFormat, folderID: editor.folderID, notes: editor.notes)
+        selectedProfile = profile
+        self.editor = nil
     }
 
     func delete(_ profile: APIProfile) {
@@ -182,6 +185,17 @@ final class ContentViewModel: ObservableObject {
             )
         }
         catch { show(error) }
+    }
+
+    @discardableResult
+    func applySidebarSort(_ snapshot: SidebarSortSnapshot) -> Bool {
+        do {
+            try repository.applySidebarSort(snapshot)
+            return true
+        } catch {
+            show(error)
+            return false
+        }
     }
 
     func markdownBackup() throws -> String {
@@ -271,6 +285,9 @@ final class ContentViewModel: ObservableObject {
         if loadState == .loading {
             loadState = models.isEmpty ? .idle : .loaded
         }
+        selectedModelID = modelID
+        selectedSummary = nil
+        expandedTestModelID = nil
         testingModelIDs = [modelID]
         requestTask = Task { [weak self] in
             guard let self else { return }
@@ -303,6 +320,7 @@ final class ContentViewModel: ObservableObject {
             guard isCurrentRequest(requestID, profileID: profileID) else { return }
             updateModel(id: modelID, summary: summary)
             selectedSummary = summary
+            expandedTestModelID = summary.success ? nil : modelID
             do {
                 try repository.saveTestRecord(summary, modelID: modelID, profile: profile)
             } catch {

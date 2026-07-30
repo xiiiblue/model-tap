@@ -17,3 +17,13 @@ final class ProfileFolder {
         self.sortOrder = sortOrder
     }
 }
+
+struct SidebarSortSnapshot {
+    let folderIDs: [UUID]
+    let groups: [SidebarProfileSortGroup]
+}
+
+struct SidebarProfileSortGroup {
+    let folderID: UUID?
+    let profileIDs: [UUID]
+}
